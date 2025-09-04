@@ -5,6 +5,7 @@ use crate::{database::SharedDatabase, networking::resp::RespValue};
 
 #[derive(Debug)]
 pub enum Command {
+    // String Commands
     Ping(Option<String>),
     Get(String),
     Set(String, String),
@@ -16,6 +17,12 @@ pub enum Command {
     Append(String, String),
     Strlen(String),
     MGet(Vec<String>),
+    MSet(Vec<(String, String)>),
+    //Hash Commands
+    HSet(String, String, String),
+    HGet(String, String),
+    HDel(Vec<(String, String)>),
+    HGetAll(String),
 }
 
 impl Command {
@@ -55,6 +62,21 @@ impl Command {
         }
     }
 
+    // Helper function for commands with key, field, and value
+    fn parse_key_field_value_command(
+        elements: &[RespValue],
+        expected_len: usize,
+    ) -> Option<(String, String, String)> {
+        if elements.len() == expected_len {
+            let key = Self::extract_bulk_string(&elements[1])?;
+            let field = Self::extract_bulk_string(&elements[2])?;
+            let value = Self::extract_bulk_string(&elements[3])?;
+            Some((key, field, value))
+        } else {
+            None
+        }
+    }
+
     // Helper function for commands with multiple keys
     fn parse_keys_command(elements: &[RespValue], min_required_len: usize) -> Option<Vec<String>> {
         if elements.len() >= min_required_len {
@@ -64,6 +86,38 @@ impl Command {
         }
     }
 
+    // Helper function for commands with multiple key-value pairs
+    fn parse_keys_values_command(
+        elements: &[RespValue],
+        min_required_len: usize,
+    ) -> Option<Vec<(String, String)>> {
+        if elements.len() >= min_required_len && elements.len() % 2 == 1 {
+            Self::extract_key_value_strings(&elements[1..])
+        } else {
+            None
+        }
+    }
+
+    // Helper function to extract key-value pairs from bulk strings
+    fn extract_key_value_strings(elements: &[RespValue]) -> Option<Vec<(String, String)>> {
+        elements
+            .chunks(2)
+            .into_iter()
+            .map(|value| {
+                if value.len() == 2 {
+                    if let (RespValue::BulkString(Some(key)), RespValue::BulkString(Some(val))) =
+                        (&value[0], &value[1])
+                    {
+                        Some((key.clone(), val.clone()))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Option<Vec<_>>>()
+    }
     pub fn parse(resp_value: &RespValue) -> Option<Self> {
         match resp_value {
             RespValue::Array(elements) if !elements.is_empty() => {
@@ -91,9 +145,15 @@ impl Command {
                     "STRLEN" => {
                         Self::parse_single_key_command(elements, 2).map(|key| Command::Strlen(key))
                     }
-                    "MGET" => {
-                        Self::parse_keys_command(elements, 2).map(Command::MGet)
+                    "MGET" => Self::parse_keys_command(elements, 2).map(Command::MGet),
+                    "MSET" => Self::parse_keys_values_command(elements, 3).map(Command::MSet),
+                    "HSET" => Self::parse_key_field_value_command(elements, 4)
+                        .map(|(k, f, v)| Command::HSet(k, f, v)),
+                    "HGET" => {
+                        Self::parse_key_value_command(elements, 3).map(|(k, f)| Command::HGet(k, f))
                     }
+                    "HDEL" => Self::parse_keys_values_command(elements, 3).map(Command::HDel),
+                    "HGETALL" => Self::parse_single_key_command(elements, 2).map(Command::HGetAll),
                     _ => None,
                 }
             }
@@ -171,6 +231,36 @@ impl Command {
                     })
                     .collect::<Vec<String>>(),
             ),
+            Self::MSet(key_values) => {
+                key_values
+                    .iter()
+                    .for_each(|(key, value)| db_guard.set(key.to_string(), value.to_string()));
+                Self::format_simple_string("OK")
+            }
+            Self::HSet(hash, field, value) => match db_guard.hset(hash, field, value) {
+                Ok(result) => Self::format_integer(result),
+                Err(e) => Self::format_error(e),
+            },
+            Self::HGet(hash, field) => match db_guard.hget(hash, field) {
+                Ok(Some(result)) => Self::format_bulk_string(&result),
+                Ok(None) => Self::format_null(),
+                Err(e) => Self::format_error(e),
+            },
+            Self::HDel(key_values) => Self::format_integer(
+                key_values
+                    .iter()
+                    .filter(|(h, f)| db_guard.hdel(h, f))
+                    .count() as i64,
+            ),
+            Self::HGetAll(key) => match db_guard.hget_all(key) {
+                Ok(value) => Self::format_array(
+                    value
+                        .into_iter()
+                        .map(|v| Self::format_bulk_string(&v))
+                        .collect::<Vec<String>>(),
+                ),
+                Err(e) => Self::format_error(e),
+            },
         }
     }
 }
