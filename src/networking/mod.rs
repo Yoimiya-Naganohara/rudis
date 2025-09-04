@@ -41,6 +41,7 @@ impl Networking {
         loop {
             match parser.read_value(&mut buf_reader).await {
                 Ok(resp_value) => {
+                    dbg!(&resp_value);
                     let response = match Command::parse(&resp_value) {
                         Some(cmd) => {
                             println!("Parsed command: {:?}", cmd);

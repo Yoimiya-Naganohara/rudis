@@ -12,7 +12,8 @@ pub enum Command {
     Ping(Option<String>),
     Get(String),
     Set(String, String),
-    Del(String)
+    Del(Vec<String>),
+    Incr(String)
 }
 
 impl Command {
@@ -63,6 +64,21 @@ impl Command {
                             None
                         }
                     }
+                    "DEL" => {
+                        if elements.len() >= 2 {
+                            let mut keys = Vec::new();
+                            for element in &elements[1..] {
+                                if let RespValue::BulkString(Some(key)) = element {
+                                    keys.push(key.clone());
+                                } else {
+                                    return None;
+                                }
+                            }
+                            Some(Command::Del(keys))
+                        } else {
+                            None
+                        }
+                    }
                     _ => None,
                 }
             }
@@ -85,8 +101,14 @@ impl Command {
                 db_guard.set(key.clone(), value.clone());
                 "+OK\r\n".to_string()
             },
-            Self::Del(key)=>{
-                "+OK\r\n".to_string()
+            Self::Del(keys) => {
+                let mut deleted_count = 0;
+                for key in keys {
+                    if db_guard.del(key) {
+                        deleted_count += 1;
+                    }
+                }
+                format!(":{}\r\n", deleted_count)
             }
         }
     }

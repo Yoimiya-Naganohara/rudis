@@ -25,4 +25,8 @@ impl Database {
     pub fn set(&mut self, key: String, value: String) {
         self.data.insert(key, value);
     }
+
+    pub fn del(&mut self, key: &str) -> bool {
+        self.data.remove(key).is_some()
+    }
 }
