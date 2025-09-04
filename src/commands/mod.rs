@@ -14,6 +14,8 @@ pub enum Command {
     IncrBy(String, String),
     DecrBy(String, String),
     Append(String, String),
+    Strlen(String),
+    MGet(Vec<String>),
 }
 
 impl Command {
@@ -53,6 +55,15 @@ impl Command {
         }
     }
 
+    // Helper function for commands with multiple keys
+    fn parse_keys_command(elements: &[RespValue], min_required_len: usize) -> Option<Vec<String>> {
+        if elements.len() >= min_required_len {
+            Self::extract_bulk_strings(&elements[1..])
+        } else {
+            None
+        }
+    }
+
     pub fn parse(resp_value: &RespValue) -> Option<Self> {
         match resp_value {
             RespValue::Array(elements) if !elements.is_empty() => {
@@ -68,13 +79,7 @@ impl Command {
                     "SET" => {
                         Self::parse_key_value_command(elements, 3).map(|(k, v)| Command::Set(k, v))
                     }
-                    "DEL" => {
-                        if elements.len() >= 2 {
-                            Self::extract_bulk_strings(&elements[1..]).map(Command::Del)
-                        } else {
-                            None
-                        }
-                    }
+                    "DEL" => Self::parse_keys_command(elements, 2).map(Command::Del),
                     "INCR" => Self::parse_single_key_command(elements, 2).map(Command::Incr),
                     "DECR" => Self::parse_single_key_command(elements, 2).map(Command::Decr),
                     "INCRBY" => Self::parse_key_value_command(elements, 3)
@@ -83,6 +88,12 @@ impl Command {
                         .map(|(k, v)| Command::DecrBy(k, v)),
                     "APPEND" => Self::parse_key_value_command(elements, 3)
                         .map(|(k, v)| Command::Append(k, v)),
+                    "STRLEN" => {
+                        Self::parse_single_key_command(elements, 2).map(|key| Command::Strlen(key))
+                    }
+                    "MGET" => {
+                        Self::parse_keys_command(elements, 2).map(Command::MGet)
+                    }
                     _ => None,
                 }
             }
@@ -94,7 +105,13 @@ impl Command {
     fn format_integer(value: i64) -> String {
         format!(":{}\r\n", value)
     }
-
+    fn format_array(elements: Vec<String>) -> String {
+        let mut result = format!("*{}\r\n", elements.len());
+        for element in elements {
+            result.push_str(&element);
+        }
+        result
+    }
     fn format_error(error: String) -> String {
         format!("-ERR {}\r\n", error)
     }
@@ -145,6 +162,15 @@ impl Command {
                 Err(e) => Self::format_error(e),
             },
             Self::Append(key, value) => Self::format_integer(db_guard.append(key, value) as i64),
+            Self::Strlen(key) => Self::format_integer(db_guard.str_len(key) as i64),
+            Self::MGet(keys) => Self::format_array(
+                keys.iter()
+                    .map(|key| match db_guard.get(key) {
+                        Some(value) => format!("${}\r\n{}\r\n", value.len(), value),
+                        None => "$-1\r\n".to_string(),
+                    })
+                    .collect::<Vec<String>>(),
+            ),
         }
     }
 }

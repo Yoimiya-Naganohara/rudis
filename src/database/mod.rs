@@ -56,6 +56,12 @@ impl Database {
             }
         }
     }
+    pub fn str_len(&mut self,key: &str) -> usize {
+        match self.data.get(key) {
+            Some(value) => {value.len()},
+            None => {0},
+        }
+    }
     // Consolidated helper for incr_by/decr_by operations
     fn add_value_by_str(&mut self, key: &str, value: &str, multiplier: i64) -> Result<i64, String> {
         match value.parse::<i64>() {
