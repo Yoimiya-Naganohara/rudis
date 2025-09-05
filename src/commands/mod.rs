@@ -5,8 +5,9 @@ use crate::{database::SharedDatabase, networking::resp::RespValue};
 
 #[derive(Debug)]
 pub enum Command {
-    // String Commands
+    // Connection Commands
     Ping(Option<String>),
+    // String Commands
     Get(String),
     Set(String, String),
     Del(Vec<String>),
@@ -18,7 +19,7 @@ pub enum Command {
     Strlen(String),
     MGet(Vec<String>),
     MSet(Vec<(String, String)>),
-    //Hash Commands
+    // Hash Commands
     HSet(String, String, String),
     HGet(String, String),
     HDel(Vec<(String, String)>),
