@@ -2,7 +2,7 @@
 // Tests individual components in isolation
 
 use rudis::data_structures::{RedisString, RedisHash, RedisList, RedisSet, RedisSortedSet};
-use rudis::database::Database;
+use rudis::database::{Database, StringOp, HashOp};
 
 #[test]
 fn test_redis_string_operations() {
@@ -131,14 +131,14 @@ fn test_database_operations() {
     let mut db = Database::new();
 
     // Test string operations
-    db.set("key1".to_string(), "value1".to_string());
+    db.set("key1", "value1".to_string());
     assert_eq!(db.get("key1"), Some("value1"));
     assert_eq!(db.get("nonexistent"), None);
 
     // Test del
-    assert!(db.del("key1"));
+    assert_eq!(db.del(&vec!["key1".to_string()]), 1);
     assert_eq!(db.get("key1"), None);
-    assert!(!db.del("nonexistent"));
+    assert_eq!(db.del(&vec!["nonexistent".to_string()]), 0);
 
     // Test numeric operations
     assert_eq!(db.incr("counter"), Ok(1));
@@ -149,7 +149,7 @@ fn test_database_operations() {
     assert_eq!(db.decr_by("counter", "2"), Ok(4));
 
     // Test numeric operations on non-numeric string
-    db.set("text".to_string(), "not_a_number".to_string());
+    db.set("text", "not_a_number".to_string());
     assert!(db.incr("text").is_err());
     assert!(db.incr_by("text", "5").is_err());
 
@@ -189,8 +189,8 @@ fn test_database_hash_operations() {
     // Test hget_all
     let all_fields = db.hget_all("user").unwrap();
     assert_eq!(all_fields.len(), 2); // key and value for "name"
-    assert!(all_fields.contains(&"name".to_string()));
-    assert!(all_fields.contains(&"Bob".to_string()));
+    assert!(all_fields.contains(&&"name".to_string()));
+    assert!(all_fields.contains(&&"Bob".to_string()));
 
     let empty_hash = db.hget_all("nonexistent").unwrap();
     assert_eq!(empty_hash.len(), 0);
@@ -201,7 +201,7 @@ fn test_database_type_conflicts() {
     let mut db = Database::new();
 
     // Set a string value
-    db.set("mykey".to_string(), "string_value".to_string());
+    db.set("mykey", "string_value".to_string());
 
     // Try hash operations on string key - should return WRONGTYPE error
     assert!(db.hset("mykey", "field", "value").is_err());
@@ -227,7 +227,7 @@ fn test_database_edge_cases() {
     let mut db = Database::new();
 
     // Test operations on empty keys
-    db.set("".to_string(), "empty_key".to_string());
+    db.set("", "empty_key".to_string());
     assert_eq!(db.get(""), Some("empty_key"));
 
     // Test large numbers

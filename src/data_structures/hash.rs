@@ -24,6 +24,13 @@ impl RedisHash {
     pub fn hdel(&mut self, field: &str) -> bool {
         self.fields.remove(field).is_some()
     }
+    
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.fields.keys()
+    }
+    pub fn values(&self)->impl Iterator<Item = &String>{
+        self.fields.values()
+    }
     pub fn flatten(&self) -> impl Iterator<Item = &String> {
         self.fields.iter().flat_map(|(k, v)| [k, v])
     }
