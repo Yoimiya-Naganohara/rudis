@@ -1,15 +1,31 @@
 [package]
 name = "rudis"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+authors = ["Your Name <your.email@example.com>"]
+description = "A high-performance Redis-compatible server written in Rust"
+license = "MIT OR Apache-2.0"
+keywords = ["redis", "database", "key-value", "in-memory"]
+categories = ["database", "network-programming"]
+repository = "https://github.com/yourusername/rudis"
+homepage = "https://github.com/yourusername/rudis"
+readme = "README.md"
 
 [dependencies]
 tokio = { version = "1.47.1", features = ["full"] }
 redis-protocol = "4.1"
 bytes = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+anyhow = "1.0"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.0"
+proptest = "1.0"
 
 [[bench]]
 name = "redis_benchmark"

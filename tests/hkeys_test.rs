@@ -1,6 +1,7 @@
 // Test for HKEYS functionality
 
 use rudis::database::{Database, HashOp, StringOp};
+use rudis::commands::CommandError;
 
 #[test]
 fn test_hkeys_functionality() {
@@ -49,5 +50,5 @@ fn test_hkeys_type_error() {
     // Try HKEYS on string - should return type error
     let result = db.hkeys("mystring");
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("WRONGTYPE"));
+    assert_eq!(result.unwrap_err(), CommandError::WrongType);
 }

@@ -2,6 +2,7 @@
 
 use std::str::FromStr;
 
+#[derive(Debug)]
 pub struct RedisString {
     value: String,
 }

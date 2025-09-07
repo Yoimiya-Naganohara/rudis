@@ -22,6 +22,11 @@ impl Config {
         Default::default()
     }
 
+    pub fn load() -> Self {
+        // TODO: Implement config file loading with fallback to defaults
+        Self::new()
+    }
+
     pub fn load_from_file(&mut self, _path: &str) {
         // TODO: Implement config file loading
     }

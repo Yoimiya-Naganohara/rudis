@@ -1,11 +1,11 @@
 // Networking module for Rudis
 // Handles TCP connections and protocol parsing
 pub mod resp;
-use crate::commands::Command;
+use crate::commands::{Command, command_helper::format_error};
 use crate::{database::SharedDatabase, networking::resp::RespParser};
 use std::{io, net::SocketAddr};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
 };
 
@@ -19,14 +19,14 @@ impl Networking {
         Ok(Networking { listener })
     }
 
-    pub async fn listen(&self, db: &SharedDatabase) {
+    pub async fn listen(&self, db: &SharedDatabase) -> tokio::io::Result<()> {
         // TODO: Implement connection handling
         println!("Listening for connections...");
 
         loop {
-            let (stream, addr) = self.listener.accept().await.expect("Could not get addr");
+            let (stream, _addr) = self.listener.accept().await?;
             let db_ref = db.clone();
-            tokio::spawn(async move { Self::handle(stream, addr, &db_ref).await });
+            tokio::spawn(async move { Self::handle(stream, _addr, &db_ref).await });
         }
     }
     pub async fn handle(
@@ -36,7 +36,6 @@ impl Networking {
     ) -> tokio::io::Result<()> {
         let (reader, mut writer) = stream.split();
         let mut buf_reader = BufReader::new(reader);
-        let mut line = String::new();
         let mut parser = RespParser::new();
         loop {
             match parser.read_value(&mut buf_reader).await {
@@ -47,7 +46,8 @@ impl Networking {
                             println!("Parsed command: {:?}", cmd);
                             cmd.execute(&db).await
                         }
-                        None => "-Err unknown command".to_string(),
+                        
+                        None => format_error(crate::commands::CommandError::UnknownCommand),
                     };
                     writer.write_all(response.as_bytes()).await?;
                 }

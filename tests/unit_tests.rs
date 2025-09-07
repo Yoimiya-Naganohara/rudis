@@ -3,6 +3,7 @@
 
 use rudis::data_structures::{RedisString, RedisHash, RedisList, RedisSet, RedisSortedSet};
 use rudis::database::{Database, StringOp, HashOp};
+use rudis::commands::CommandError;
 
 #[test]
 fn test_redis_string_operations() {
@@ -210,15 +211,15 @@ fn test_database_type_conflicts() {
 
     // Verify the error message
     if let Err(msg) = db.hset("mykey", "field", "value") {
-        assert!(msg.contains("WRONGTYPE"));
+        assert_eq!(msg, CommandError::WrongType);
     }
 
     if let Err(msg) = db.hget("mykey", "field") {
-        assert!(msg.contains("WRONGTYPE"));
+        assert_eq!(msg, CommandError::WrongType);
     }
 
     if let Err(msg) = db.hget_all("mykey") {
-        assert!(msg.contains("WRONGTYPE"));
+        assert_eq!(msg, CommandError::WrongType);
     }
 }
 
