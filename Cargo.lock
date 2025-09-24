@@ -806,7 +806,6 @@ dependencies = [
  "anyhow",
  "bytes",
  "criterion",
- "lazy_static",
  "proptest",
  "redis-protocol",
  "serde",

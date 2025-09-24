@@ -2,12 +2,16 @@
 // Handles parsing and executing Redis commands
 
 use crate::{
-    commands::command_helper::{format_array, format_bulk_string, format_error, format_integer, format_null, format_simple_string},
-    database::{HashOp, ListOp, SharedDatabase, StringOp},
+    commands::command_helper::{
+        format_array, format_bulk_string, format_error, format_integer, format_null,
+        format_simple_string,
+    },
+    database::{HashOp, ListOp, SetOp, SharedDatabase, StringOp},
     networking::resp::RespValue,
 };
 mod errors;
 pub use errors::*;
+use serde_json::value;
 #[derive(Debug)]
 pub enum Command {
     // Connection Commands
@@ -49,6 +53,45 @@ pub enum Command {
     LTrim(String, String, String), // LTRIM key start stop - Trim list to specified range
     LSet(String, String, String), // LSET key index element - Set element at index in list
     LInsert(String, String, String, String), // LINSERT key BEFORE|AFTER pivot element - Insert element before/after pivot
+
+    // Set Commands
+    SAdd(String, Vec<String>), // SADD key member [member ...] - Add members to set
+    SRem(String, Vec<String>), // SREM key member [member ...] - Remove members from set
+    SMembers(String),          // SMEMBERS key - Get all members in set
+    SCard(String),             // SCARD key - Get number of members in set
+    SIsMember(String, String), // SISMEMBER key member - Check if member exists in set
+    SInter(Vec<String>),       // SINTER key [key ...] - Intersect multiple sets
+    SUnion(Vec<String>),       // SUNION key [key ...] - Union multiple sets
+    SDiff(Vec<String>),        // SDIFF key [key ...] - Subtract multiple sets
+
+    // Sorted Set Commands
+    ZAdd(String, Vec<(String, String)>), // ZADD key score member [score member ...] - Add members to sorted set
+    ZRem(String, Vec<String>), // ZREM key member [member ...] - Remove members from sorted set
+    ZRange(String, String, String), // ZRANGE key start stop - Get range of members in sorted set
+    ZRangeByScore(String, String, String), // ZRANGEBYSCORE key min max - Get members by score range
+    ZCard(String),             // ZCARD key - Get number of members in sorted set
+    ZScore(String, String),    // ZSCORE key member - Get score of member in sorted set
+    ZRank(String, String),     // ZRANK key member - Get rank of member in sorted set
+
+    // Key Commands
+    Exists(Vec<String>),    // EXISTS key [key ...] - Check if keys exist
+    Expire(String, String), // EXPIRE key seconds - Set key expiration time
+    TTL(String),            // TTL key - Get remaining time to live of key
+    Type(String),           // TYPE key - Get type of key
+    Keys(String),           // KEYS pattern - Find keys matching pattern
+    FlushAll,               // FLUSHALL - Remove all keys from all databases
+    FlushDB,                // FLUSHDB - Remove all keys from current database
+
+    // Connection/Server Commands
+    Echo(String),         // ECHO message - Echo the given string
+    Auth(String),         // AUTH password - Authenticate to server
+    Select(String),       // SELECT index - Change selected database
+    Info(Option<String>), // INFO [section] - Get server information
+
+    // Additional String Commands
+    SetNX(String, String), // SETNX key value - Set key only if it doesn't exist
+    SetEX(String, String, String), // SETEX key seconds value - Set key with expiration
+    GetSet(String, String), // GETSET key value - Set key and return old value
 }
 pub mod command_helper {
     use crate::networking::resp::RespValue;
@@ -137,6 +180,18 @@ pub mod command_helper {
     ) -> Option<Vec<(String, String)>> {
         if elements.len() >= min_required_len && elements.len() % 2 == 1 {
             extract_key_value_strings(&elements[1..])
+        } else {
+            None
+        }
+    }
+    pub fn parse_key_pair_values_command(
+        elements: &[RespValue],
+        min_required_len: usize,
+    ) -> Option<(String, Vec<(String, String)>)> {
+        if elements.len() >= min_required_len && elements.len() % 2 == 1 {
+            let key = extract_bulk_string(&elements[1])?;
+            let pairs = extract_key_value_strings(&elements[2..])?;
+            Some((key, pairs))
         } else {
             None
         }
@@ -246,16 +301,25 @@ macro_rules! parse_command {
     (key_value_pairs, $elements:expr, $variant:ident) => {
         command_helper::parse_keys_values_command($elements, 3).map(Command::$variant)
     };
-
+    (key_pair_values,$elements:expr,$variant:ident) => {
+        command_helper::parse_key_pair_values_command($elements, 4)
+            .map(|(k, v)| Command::$variant(k, v))
+    };
     (key_ord_pivot_value,$elements:expr,$variant:ident) => {
         command_helper::parse_key_ord_pivot_value_command($elements, 5)
             .map(|(k, o, p, v)| Command::$variant(k, o, p, v))
     };
-    // Special PING command
-    (ping, $elements:expr) => {
+    (none,$elements:expr,$variant:ident) => {
         match $elements.len() {
-            1 => Some(Command::Ping(None)),
-            2 => Some(Command::Ping(command_helper::extract_bulk_string(
+            1 => Some(Command::$variant),
+            _ => None,
+        }
+    };
+    // Special PING command
+    (option, $elements:expr,$variant:ident) => {
+        match $elements.len() {
+            1 => Some(Command::$variant(None)),
+            2 => Some(Command::$variant(command_helper::extract_bulk_string(
                 &$elements[1],
             ))),
             _ => None,
@@ -271,7 +335,7 @@ impl Command {
                     command_helper::extract_bulk_string(&elements[0])?.to_uppercase();
 
                 match command_name.as_str() {
-                    "PING" => parse_command!(ping, elements),
+                    "PING" => parse_command!(option, elements, Ping),
                     "GET" => parse_command!(single_key, elements, Get),
                     "SET" => parse_command!(key_value, elements, Set),
                     "DEL" => parse_command!(keys, elements, Del),
@@ -303,6 +367,35 @@ impl Command {
                     "LTRIM" => parse_command!(key_field_value, elements, LTrim),
                     "LSET" => parse_command!(key_field_value, elements, LSet),
                     "LINSERT" => parse_command!(key_ord_pivot_value, elements, LInsert),
+                    "SADD" => parse_command!(key_fields, elements, SAdd),
+                    "SREM" => parse_command!(key_fields, elements, SRem),
+                    "SMEMBERS" => parse_command!(single_key, elements, SMembers),
+                    "SCARD" => parse_command!(single_key, elements, SCard),
+                    "SISMEMBER" => parse_command!(key_value, elements, SIsMember),
+                    "SINTER" => parse_command!(keys, elements, SInter),
+                    "SUNION" => parse_command!(keys, elements, SUnion),
+                    "SDIFF" => parse_command!(keys, elements, SDiff),
+                    "ZADD" => parse_command!(key_pair_values, elements, ZAdd),
+                    "ZREM" => parse_command!(key_fields, elements, ZRem),
+                    "ZRANGE" => parse_command!(key_field_value, elements, ZRange),
+                    "ZRANGEBYSCORE" => parse_command!(key_field_value, elements, ZRangeByScore),
+                    "ZCARD" => parse_command!(single_key, elements, ZCard),
+                    "ZSCORE" => parse_command!(key_value, elements, ZScore),
+                    "ZRANK" => parse_command!(key_value, elements, ZRank),
+                    "EXISTS" => parse_command!(keys, elements, Exists),
+                    "EXPIRE" => parse_command!(key_value, elements, Expire),
+                    "TTL" => parse_command!(single_key, elements, TTL),
+                    "TYPE" => parse_command!(single_key, elements, Type),
+                    "KEYS" => parse_command!(single_key, elements, Keys),
+                    "FLUSHALL" => parse_command!(none, elements, FlushAll),
+                    "FLUSHDB" => parse_command!(none, elements, FlushDB),
+                    "ECHO" => parse_command!(single_key, elements, Echo),
+                    "AUTH" => parse_command!(single_key, elements, Auth),
+                    "SELECT" => parse_command!(single_key, elements, Select),
+                    "INFO" => parse_command!(option, elements, Info),
+                    "SETNX" => parse_command!(key_value, elements, SetNX),
+                    "SETEX" => parse_command!(key_field_value, elements, SetEX),
+                    "GETSET" => parse_command!(key_value, elements, GetSet),
                     _ => None,
                 }
             }
@@ -313,39 +406,38 @@ impl Command {
     pub async fn execute(&self, db: &SharedDatabase) -> String {
         let mut db_guard = db.lock().await;
         match self {
-            Self::Ping(None) => command_helper::format_simple_string("PONG"),
-            Self::Ping(Some(msg)) => command_helper::format_simple_string(msg),
-            //String
-            Self::Get(key) => match db_guard.get(key) {
+            Command::Ping(None) => command_helper::format_simple_string("PONG"),
+            Command::Ping(Some(msg)) => command_helper::format_simple_string(msg),
+            Command::Get(key) => match db_guard.get(key) {
                 Some(value) => command_helper::format_bulk_string(value),
                 None => command_helper::format_null(),
             },
-            Self::Set(key, value) => {
+            Command::Set(key, value) => {
                 db_guard.set(key, value.clone());
                 command_helper::format_simple_string("OK")
             }
-            Self::Del(keys) => command_helper::format_integer(db_guard.del(keys) as i64),
-            Self::Incr(key) => match db_guard.incr(key) {
+            Command::Del(keys) => command_helper::format_integer(db_guard.del(keys) as i64),
+            Command::Incr(key) => match db_guard.incr(key) {
                 Ok(value) => command_helper::format_integer(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::Decr(key) => match db_guard.decr(key) {
+            Command::Decr(key) => match db_guard.decr(key) {
                 Ok(value) => command_helper::format_integer(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::IncrBy(key, value) => match db_guard.incr_by(key, value) {
+            Command::IncrBy(key, value) => match db_guard.incr_by(key, value) {
                 Ok(value) => command_helper::format_integer(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::DecrBy(key, value) => match db_guard.decr_by(key, value) {
+            Command::DecrBy(key, value) => match db_guard.decr_by(key, value) {
                 Ok(value) => command_helper::format_integer(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::Append(key, value) => {
+            Command::Append(key, value) => {
                 command_helper::format_integer(db_guard.append(key, value) as i64)
             }
-            Self::Strlen(key) => command_helper::format_integer(db_guard.str_len(key) as i64),
-            Self::MGet(keys) => command_helper::format_array(
+            Command::Strlen(key) => command_helper::format_integer(db_guard.str_len(key) as i64),
+            Command::MGet(keys) => command_helper::format_array(
                 keys.iter()
                     .map(|key| match db_guard.get(key) {
                         Some(value) => format!("${}\r\n{}\r\n", value.len(), value),
@@ -353,91 +445,127 @@ impl Command {
                     })
                     .collect::<Vec<String>>(),
             ),
-            Self::MSet(key_values) => {
+            Command::MSet(key_values) => {
                 key_values
                     .iter()
                     .for_each(|(key, value)| db_guard.set(key, value.clone()));
                 command_helper::format_simple_string("OK")
             }
-            // Hash
-            Self::HSet(hash, field, value) => match db_guard.hset(hash, field, value) {
+            Command::HSet(hash, field, value) => match db_guard.hset(hash, field, value) {
                 Ok(result) => command_helper::format_integer(result),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::HGet(hash, field) => match db_guard.hget(hash, field) {
+            Command::HGet(hash, field) => match db_guard.hget(hash, field) {
                 Ok(Some(result)) => command_helper::format_bulk_string(result),
                 Ok(None) => command_helper::format_null(),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::HDel(hash, fields) => {
+            Command::HDel(hash, fields) => {
                 command_helper::format_integer(db_guard.hdel_multiple(hash, &fields) as i64)
             }
-            Self::HGetAll(key) => match db_guard.hget_all(key) {
+            Command::HGetAll(key) => match db_guard.hget_all(key) {
                 Ok(value) => command_helper::format_hash_response(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::HKeys(key) => match db_guard.hkeys(key) {
+            Command::HKeys(key) => match db_guard.hkeys(key) {
                 Ok(value) => command_helper::format_hash_response(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::HVals(key) => match db_guard.hvals(key) {
+            Command::HVals(key) => match db_guard.hvals(key) {
                 Ok(value) => command_helper::format_hash_response(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::HLen(key) => match db_guard.hlen(key) {
+            Command::HLen(key) => match db_guard.hlen(key) {
                 Ok(value) => command_helper::format_integer(value as i64),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::HExists(hash, field) => match db_guard.hexists(hash, field) {
+            Command::HExists(hash, field) => match db_guard.hexists(hash, field) {
                 Ok(value) => command_helper::format_integer(if value { 1 } else { 0 }),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::HIncrBy(hash, field, value) => match db_guard.hincrby(hash, field, &value) {
+            Command::HIncrBy(hash, field, value) => match db_guard.hincrby(hash, field, &value) {
                 Ok(result) => command_helper::format_integer(result),
                 Err(e) => command_helper::format_error(e),
             },
-            Self::HIncrByFloat(hash, field, value) => {
+            Command::HIncrByFloat(hash, field, value) => {
                 match db_guard.hincrbyfloat(hash, field, &value) {
                     Ok(result) => command_helper::format_bulk_string(&result.to_string()),
                     Err(e) => command_helper::format_error(e),
                 }
             }
-            Self::LPush(key, value) => {
+            Command::LPush(key, value) => {
                 db_guard.lpush(key, value);
                 format_simple_string("OK")
             }
-            Self::RPush(key, value) => {
+            Command::RPush(key, value) => {
                 db_guard.rpush(key, value);
                 format_simple_string("OK")
             }
-            Self::LPop(key) => match db_guard.lpop(key) {
+            Command::LPop(key) => match db_guard.lpop(key) {
                 Some(result) => format_simple_string(&result),
                 None => format_null(),
             },
-            Self::RPop(key) => match db_guard.rpop(key) {
+            Command::RPop(key) => match db_guard.rpop(key) {
                 Some(result) => format_simple_string(&result),
                 None => format_null(),
             },
-            Self::LLen(key)=>format_integer(db_guard.llen(key)as i64),
-            Self::LIndex(key, index)=>match db_guard.lindex(key, index) {
-                Some(val) => {format_simple_string(val)},
-                None => {format_null()},
+            Command::LLen(key) => format_integer(db_guard.llen(key) as i64),
+            Command::LIndex(key, index) => match db_guard.lindex(key, index) {
+                Some(val) => format_simple_string(val),
+                None => format_null(),
             },
-            Self::LRange(key, start, end)=>match db_guard.lrange(key, start, end) {
-                Ok(val) => {format_array(val.iter().map(|v|format_bulk_string(v)).collect())},
-                Err(e) => {format_error(e)},
+            Command::LRange(key, start, end) => match db_guard.lrange(key, start, end) {
+                Ok(val) => format_array(val.iter().map(|v| format_bulk_string(v)).collect()),
+                Err(e) => format_error(e),
             },
-            Self::LTrim(key, start, end)=>match db_guard.ltrim(key, start, end) {
-                Ok(val) => {format_simple_string("OK")},
-                Err(e) => {format_error(e)},
+            Command::LTrim(key, start, end) => match db_guard.ltrim(key, start, end) {
+                Ok(val) => format_simple_string("OK"),
+                Err(e) => format_error(e),
+            },
+            Command::LSet(key, index, value) => {
+                match db_guard.lset(key, index, value.to_string()) {
+                    Ok(val) => format_simple_string("OK"),
+                    Err(e) => format_error(e),
+                }
             }
-            Self::LSet(key, index, value)=>match db_guard.lset(key, index, value.to_string()) {
-                Ok(val) => {format_simple_string("OK")},
-                Err(e) => {format_error(e)},
-            }Self::LInsert(key, ord, pivot, value)=>match db_guard.linsert(key, ord, pivot, value.to_string()) {
-                Ok(val) => {format_integer(val)},
-                Err(e) => {format_error(e)},
+            Command::LInsert(key, ord, pivot, value) => {
+                match db_guard.linsert(key, ord, pivot, value.to_string()) {
+                    Ok(val) => format_integer(val),
+                    Err(e) => format_error(e),
+                }
             }
+            Command::SAdd(key, values) => format_integer(db_guard.sadd(key, values)as i64),
+            Command::SRem(key,values) => format_integer(db_guard.srem(key, values)as i64),
+            Command::SMembers(key) => (match db_guard.smembers(key) {
+                Ok(value) => {format_array(value.iter().map(|v|format_bulk_string(v)).collect())},
+                Err(e) => {format_error(e)},
+            }),
+            Command::SCard(key) => format_integer(db_guard.scard(key)as i64),
+            Command::SIsMember(_, _) => todo!(),
+            Command::SInter(items) => todo!(),
+            Command::SUnion(items) => todo!(),
+            Command::SDiff(items) => todo!(),
+            Command::ZAdd(_, items) => todo!(),
+            Command::ZRem(_, items) => todo!(),
+            Command::ZRange(_, _, _) => todo!(),
+            Command::ZRangeByScore(_, _, _) => todo!(),
+            Command::ZCard(_) => todo!(),
+            Command::ZScore(_, _) => todo!(),
+            Command::ZRank(_, _) => todo!(),
+            Command::Exists(items) => todo!(),
+            Command::Expire(_, _) => todo!(),
+            Command::TTL(_) => todo!(),
+            Command::Type(_) => todo!(),
+            Command::Keys(_) => todo!(),
+            Command::FlushAll => todo!(),
+            Command::FlushDB => todo!(),
+            Command::Echo(_) => todo!(),
+            Command::Auth(_) => todo!(),
+            Command::Select(_) => todo!(),
+            Command::Info(_) => todo!(),
+            Command::SetNX(_, _) => todo!(),
+            Command::SetEX(_, _, _) => todo!(),
+            Command::GetSet(_, _) => todo!(),
         }
     }
 }
