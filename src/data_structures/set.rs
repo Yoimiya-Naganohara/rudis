@@ -1,7 +1,7 @@
 // Set data structure for Rudis
 
 use std::collections::HashSet;
-
+#[derive(Debug)]
 pub struct RedisSet {
     members: HashSet<String>,
 }
@@ -21,5 +21,12 @@ impl RedisSet {
 
     pub fn sismember(&self, member: &str) -> bool {
         self.members.contains(member)
+    }
+    pub fn smembers(&self)->Vec<&String>{
+        self.members.iter().collect()
+    }
+
+    pub(crate) fn scard(&self) -> usize {
+        self.members.len()
     }
 }

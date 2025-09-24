@@ -2,7 +2,7 @@
 // In-memory data store implementation
 
 use crate::commands::CommandError;
-use crate::data_structures::{list, RedisHash, RedisList, RedisString};
+use crate::data_structures::{list, set, RedisHash, RedisList, RedisSet, RedisString};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -14,6 +14,7 @@ enum RedisValue {
     String(RedisString),
     Hash(RedisHash),
     List(RedisList),
+    Set(RedisSet),
 }
 
 #[derive(Debug)]
@@ -58,9 +59,84 @@ pub trait ListOp {
     fn lrange(&self, key: &str, start: &str, end: &str) -> Result<Vec<&String>, CommandError>;
     fn ltrim(&mut self, key: &str, start: &str, end: &str) -> Result<(), CommandError>;
     fn lset(&mut self, key: &str, index: &str, value: String) -> Result<(), CommandError>;
-    fn linsert(&mut self, key: &str, ord: &str, pivot: &str, value: String) -> Result<i64, CommandError>;
+    fn linsert(
+        &mut self,
+        key: &str,
+        ord: &str,
+        pivot: &str,
+        value: String,
+    ) -> Result<i64, CommandError>;
+}
+pub trait SetOp {
+    fn sadd(&mut self, key: &str, values: &[String]) -> usize;
+    fn srem(&mut self, key: &str, values: &[String]) -> usize;
+    fn smembers(&mut self, key: &str) -> Result<Vec<&String>, CommandError>;
+    fn scard(&mut self, key: &str) -> usize;
+    fn sismember(&mut self, key: &str,member:&str) -> bool;
+    fn sinter(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
+    fn sunion(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
+    fn sdiff(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
 }
 
+impl SetOp for Database {
+    fn sadd(&mut self, key: &str, values: &[String]) -> usize {
+        if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
+            values
+                .iter()
+                .filter_map(|val| Some(set.sadd(val.to_owned())))
+                .count()
+        } else {
+            0
+        }
+    }
+
+    fn srem(&mut self, key: &str, values: &[String]) -> usize {
+        if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
+            values
+                .iter()
+                .filter_map(|val| Some(set.srem(val)))
+                .count()
+        } else {
+            0
+        }
+    }
+
+    fn smembers(&mut self, key: &str) -> Result<Vec<&String>, CommandError> {
+        if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
+            Ok(set.smembers())
+        }else {
+            Err(CommandError::WrongType)
+        }
+    }
+
+    fn scard(&mut self, key: &str) -> usize {
+        if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
+            set.scard()
+        }else {
+            0
+        }
+    }
+
+    fn sismember(&mut self, key: &str,member:&str) -> bool {
+        if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
+            set.sismember(member)
+        }else {
+            false
+        }
+    }
+
+    fn sinter(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
+        todo!()
+    }
+
+    fn sunion(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
+        todo!()
+    }
+
+    fn sdiff(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
+        todo!()
+    }
+}
 impl StringOp for Database {
     fn get(&self, key: &str) -> Option<&str> {
         if let Some(RedisValue::String(value)) = self.data.get(key) {
@@ -155,9 +231,7 @@ impl HashOp for Database {
     fn hget(&self, hash: &str, field: &str) -> Result<Option<&String>, CommandError> {
         match self.data.get(hash) {
             Some(RedisValue::Hash(existing_hash)) => Ok(existing_hash.hget(field)),
-            Some(_) => {
-                Err(CommandError::WrongType)
-            }
+            Some(_) => Err(CommandError::WrongType),
             None => Ok(None),
         }
     }
@@ -186,9 +260,7 @@ impl HashOp for Database {
             Some(RedisValue::Hash(existing_hash)) => {
                 Ok(existing_hash.flatten().collect::<Vec<&String>>())
             }
-            Some(_) => {
-                Err(CommandError::WrongType)
-            }
+            Some(_) => Err(CommandError::WrongType),
             None => Ok(Vec::new()), // Empty array for non-existent keys
         }
     }
@@ -198,9 +270,7 @@ impl HashOp for Database {
             Some(RedisValue::Hash(existing_hash)) => {
                 Ok(existing_hash.keys().collect::<Vec<&String>>())
             }
-            Some(_) => {
-                Err(CommandError::WrongType)
-            }
+            Some(_) => Err(CommandError::WrongType),
             None => Ok(Vec::new()), // Empty array for non-existent keys
         }
     }
@@ -210,9 +280,7 @@ impl HashOp for Database {
             Some(RedisValue::Hash(existing_hash)) => {
                 Ok(existing_hash.values().collect::<Vec<&String>>())
             }
-            Some(_) => {
-                Err(CommandError::WrongType)
-            }
+            Some(_) => Err(CommandError::WrongType),
             None => Ok(Vec::new()), // Empty array for non-existent keys
         }
     }
@@ -220,9 +288,7 @@ impl HashOp for Database {
     fn hlen(&self, hash: &str) -> Result<usize, CommandError> {
         match self.data.get(hash) {
             Some(RedisValue::Hash(existing_hash)) => Ok(existing_hash.len()),
-            Some(_) => {
-                Err(CommandError::WrongType)
-            }
+            Some(_) => Err(CommandError::WrongType),
             None => Ok(0), // 0 for non-existent keys
         }
     }
@@ -230,9 +296,7 @@ impl HashOp for Database {
     fn hexists(&self, hash: &str, field: &str) -> Result<bool, CommandError> {
         match self.data.get(hash) {
             Some(RedisValue::Hash(existing_hash)) => Ok(existing_hash.hexists(field)),
-            Some(_) => {
-                Err(CommandError::WrongType)
-            }
+            Some(_) => Err(CommandError::WrongType),
             None => Ok(false), // false for non-existent keys
         }
     }
@@ -246,9 +310,7 @@ impl HashOp for Database {
                 },
                 Err(_) => Err(CommandError::InvalidInteger),
             },
-            Some(_) => {
-                Err(CommandError::WrongType)
-            }
+            Some(_) => Err(CommandError::WrongType),
             None => {
                 // Key doesn't exist, create new hash with field set to value
                 let mut new_hash = RedisHash::new();
@@ -276,9 +338,7 @@ impl HashOp for Database {
                 },
                 Err(_) => Err(CommandError::InvalidFloat),
             },
-            Some(_) => {
-                Err(CommandError::WrongType)
-            }
+            Some(_) => Err(CommandError::WrongType),
             None => {
                 // Key doesn't exist, create new hash with field set to value
                 let mut new_hash = RedisHash::new();
@@ -356,7 +416,7 @@ impl ListOp for Database {
         if let Some(RedisValue::List(list)) = self.data.get(key) {
             if let Ok(start) = start.parse() {
                 if let Ok(end) = end.parse() {
-                                        Ok(list.range(start, end))
+                    Ok(list.range(start, end))
                 } else {
                     Err(CommandError::InvalidInteger)
                 }
@@ -396,10 +456,16 @@ impl ListOp for Database {
         }
     }
 
-    fn linsert(&mut self, key: &str, ord: &str, pivot: &str, value: String) -> Result<i64, CommandError> {
+    fn linsert(
+        &mut self,
+        key: &str,
+        ord: &str,
+        pivot: &str,
+        value: String,
+    ) -> Result<i64, CommandError> {
         if let Some(RedisValue::List(list)) = self.data.get_mut(key) {
-            list.insert(ord,pivot,value)
-        }else {
+            list.insert(ord, pivot, value)
+        } else {
             Err(CommandError::WrongType)
         }
     }
@@ -415,7 +481,12 @@ impl Database {
     }
 
     // Consolidated helper for incr_by/decr_by operations
-    fn add_value_by_str(&mut self, key: &str, value: &str, multiplier: i64) -> Result<i64, CommandError> {
+    fn add_value_by_str(
+        &mut self,
+        key: &str,
+        value: &str,
+        multiplier: i64,
+    ) -> Result<i64, CommandError> {
         match value.parse::<i64>() {
             Ok(integer) => self.add_value(key, integer * multiplier),
             Err(_) => Err(CommandError::InvalidInteger),
