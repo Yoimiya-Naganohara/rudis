@@ -3,6 +3,7 @@
 
 use crate::commands::CommandError;
 use crate::data_structures::{list, set, RedisHash, RedisList, RedisSet, RedisString};
+use std::collections::HashSet;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
@@ -70,41 +71,52 @@ pub trait ListOp {
 pub trait SetOp {
     fn sadd(&mut self, key: &str, values: &[String]) -> usize;
     fn srem(&mut self, key: &str, values: &[String]) -> usize;
-    fn smembers(&mut self, key: &str) -> Result<Vec<&String>, CommandError>;
+    fn smembers(& self, key: &str) -> Result<Vec<&String>, CommandError>;
     fn scard(&mut self, key: &str) -> usize;
-    fn sismember(&mut self, key: &str,member:&str) -> bool;
-    fn sinter(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
-    fn sunion(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
-    fn sdiff(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
+    fn sismember(&self, key: &str, member: &str) -> bool;
+    fn sinter(&self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
+    fn sunion(&self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
+    fn sdiff(&self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
 }
 
 impl SetOp for Database {
     fn sadd(&mut self, key: &str, values: &[String]) -> usize {
-        if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
-            values
-                .iter()
-                .filter_map(|val| Some(set.sadd(val.to_owned())))
-                .count()
-        } else {
-            0
+        match self.data.get_mut(key) {
+            Some(RedisValue::Set(set)) => {
+                values
+                    .iter()
+                    .filter(|val| set.sadd((*val).clone()))
+                    .count()
+            }
+            Some(_) => {
+                // Key exists but is wrong type
+                0 // Should probably return error, but for now match existing behavior
+            }
+            None => {
+                // Key doesn't exist, create new set
+                let mut new_set = RedisSet::new();
+                let added = values
+                    .iter()
+                    .filter(|val| new_set.sadd((*val).clone()))
+                    .count();
+                self.data.insert(key.to_string(), RedisValue::Set(new_set));
+                added
+            }
         }
     }
 
     fn srem(&mut self, key: &str, values: &[String]) -> usize {
         if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
-            values
-                .iter()
-                .filter_map(|val| Some(set.srem(val)))
-                .count()
+            values.iter().filter(|val| set.srem(val)).count()
         } else {
             0
         }
     }
 
-    fn smembers(&mut self, key: &str) -> Result<Vec<&String>, CommandError> {
-        if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
+    fn smembers(& self, key: &str) -> Result<Vec<&String>, CommandError> {
+        if let Some(RedisValue::Set(set)) = self.data.get(key) {
             Ok(set.smembers())
-        }else {
+        } else {
             Err(CommandError::WrongType)
         }
     }
@@ -112,29 +124,60 @@ impl SetOp for Database {
     fn scard(&mut self, key: &str) -> usize {
         if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
             set.scard()
-        }else {
+        } else {
             0
         }
     }
 
-    fn sismember(&mut self, key: &str,member:&str) -> bool {
-        if let Some(RedisValue::Set(set)) = self.data.get_mut(key) {
+    fn sismember(&self, key: &str, member: &str) -> bool {
+        if let Some(RedisValue::Set(set)) = self.data.get(key) {
             set.sismember(member)
-        }else {
+        } else {
             false
         }
     }
 
-    fn sinter(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
-        todo!()
+    fn sinter(&self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
+        let mut res = Vec::new();
+        for key in keys {
+            if let Some(RedisValue::Set(set)) = self.data.get(key) {
+                for ele in set.smembers() {
+                    res.push(ele);
+                }
+            } else {
+                return Err(CommandError::WrongType);
+            }
+        }
+        Ok(res)
     }
 
-    fn sunion(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
-        todo!()
+    fn sunion(&self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
+        match self.sinter(keys) {
+            Ok(res) => Ok(res
+                .into_iter()
+                .collect::<HashSet<_>>()
+                .into_iter()
+                .collect()),
+            Err(e) => Err(e),
+        }
     }
 
-    fn sdiff(&mut self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
-        todo!()
+    fn sdiff(&self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
+        match self.smembers(&keys[0]) {
+            Ok(res) => {
+                let mut res: HashSet<_> = res.into_iter().collect();
+                match self.sunion(&keys[1..]) {
+                    Ok(members) => {
+                        for member in members {
+                            res.remove(member);
+                        }
+                        Ok(res.into_iter().collect())
+                    }
+                    Err(e) => Err(e),
+                }
+            }
+            Err(e) => Err(e),
+        }
     }
 }
 impl StringOp for Database {

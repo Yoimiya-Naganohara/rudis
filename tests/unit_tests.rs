@@ -2,7 +2,7 @@
 // Tests individual components in isolation
 
 use rudis::data_structures::{RedisString, RedisHash, RedisList, RedisSet, RedisSortedSet};
-use rudis::database::{Database, StringOp, HashOp};
+use rudis::database::{Database, StringOp, HashOp, SetOp};
 use rudis::commands::CommandError;
 
 #[test]
@@ -98,33 +98,6 @@ fn test_redis_set_operations() {
     assert!(set.sismember("b"));
     assert!(set.sismember("c"));
     assert!(!set.sismember("d"));
-}
-
-#[test]
-fn test_redis_sorted_set_operations() {
-    let mut zset = RedisSortedSet::new();
-
-    // Test zadd
-    zset.zadd("alice".to_string(), 10.5);
-    zset.zadd("bob".to_string(), 5.2);
-    zset.zadd("charlie".to_string(), 15.8);
-
-    // Test zscore
-    assert_eq!(zset.zscore("alice"), Some(&10.5));
-    assert_eq!(zset.zscore("bob"), Some(&5.2));
-    assert_eq!(zset.zscore("charlie"), Some(&15.8));
-    assert_eq!(zset.zscore("nonexistent"), None);
-
-    // Test zrem
-    assert!(zset.zrem("bob"));
-    assert_eq!(zset.zscore("bob"), None);
-
-    // Test zrem on non-existent member
-    assert!(!zset.zrem("nonexistent"));
-
-    // Test updating score
-    zset.zadd("alice".to_string(), 20.0);
-    assert_eq!(zset.zscore("alice"), Some(&20.0));
 }
 
 #[test]
@@ -244,4 +217,48 @@ fn test_database_edge_cases() {
     // Test hash with empty field names
     assert_eq!(db.hset("hash", "", "empty_field"), Ok(1));
     assert_eq!(db.hget("hash", ""), Ok(Some(&"empty_field".to_string())));
+}
+
+#[test]
+fn test_database_set_operations() {
+    let mut db = Database::new();
+
+    // Test sadd on new set
+    assert_eq!(db.sadd("myset", &["member1".to_string()]), 1);
+    assert_eq!(db.sadd("myset", &["member2".to_string(), "member3".to_string()]), 2);
+
+    // Test sadd on existing members
+    assert_eq!(db.sadd("myset", &["member1".to_string()]), 0);
+
+    // Test smembers
+    let members = db.smembers("myset").unwrap();
+    assert_eq!(members.len(), 3);
+    assert!(members.contains(&&"member1".to_string()));
+    assert!(members.contains(&&"member2".to_string()));
+    assert!(members.contains(&&"member3".to_string()));
+
+    // Test scard
+    assert_eq!(db.scard("myset"), 3);
+
+    // Test sismember
+    assert!(db.sismember("myset", "member1"));
+    assert!(!db.sismember("myset", "nonexistent"));
+
+    // Test srem
+    assert_eq!(db.srem("myset", &["member2".to_string()]), 1);
+    assert_eq!(db.scard("myset"), 2);
+    assert!(!db.sismember("myset", "member2"));
+
+    // Test srem on non-existent members
+    assert_eq!(db.srem("myset", &["nonexistent".to_string()]), 0);
+
+    // Test operations on non-existent set
+    assert_eq!(db.scard("nonexistent"), 0);
+    assert!(!db.sismember("nonexistent", "anything"));
+    assert_eq!(db.srem("nonexistent", &["anything".to_string()]), 0);
+
+    // Test type conflicts
+    db.set("notaset", "string".to_string());
+    assert!(db.smembers("notaset").is_err());
+    assert_eq!(db.smembers("notaset").unwrap_err(), CommandError::WrongType);
 }

@@ -541,10 +541,19 @@ impl Command {
                 Err(e) => {format_error(e)},
             }),
             Command::SCard(key) => format_integer(db_guard.scard(key)as i64),
-            Command::SIsMember(_, _) => todo!(),
-            Command::SInter(items) => todo!(),
-            Command::SUnion(items) => todo!(),
-            Command::SDiff(items) => todo!(),
+            Command::SIsMember(key,member) => format_integer(db_guard.sismember(key, member)as i64),
+            Command::SInter(items) => match db_guard.sinter(items) {
+                Ok(res) => {format_array(res.iter().map(|v|format_bulk_string(v)).collect())},
+                Err(e) => {format_error(e)},
+            },
+            Command::SUnion(items) =>  match db_guard.sunion(items) {
+                Ok(res) => {format_array(res.iter().map(|v|format_bulk_string(v)).collect())},
+                Err(e) => {format_error(e)},
+            },
+            Command::SDiff(items) =>  match db_guard.sdiff(items) {
+                Ok(res) => {format_array(res.iter().map(|v|format_bulk_string(v)).collect())},
+                Err(e) => {format_error(e)},
+            },
             Command::ZAdd(_, items) => todo!(),
             Command::ZRem(_, items) => todo!(),
             Command::ZRange(_, _, _) => todo!(),
