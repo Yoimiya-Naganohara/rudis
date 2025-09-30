@@ -102,7 +102,7 @@ fn test_redis_set_operations() {
 
 #[test]
 fn test_database_operations() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Test string operations
     db.set("key1", "value1".to_string());
@@ -140,7 +140,7 @@ fn test_database_operations() {
 
 #[test]
 fn test_database_hash_operations() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Test hset on new hash
     assert_eq!(db.hset("user", "name", "Alice"), Ok(1));
@@ -172,7 +172,7 @@ fn test_database_hash_operations() {
 
 #[test]
 fn test_database_type_conflicts() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Set a string value
     db.set("mykey", "string_value".to_string());
@@ -198,7 +198,7 @@ fn test_database_type_conflicts() {
 
 #[test]
 fn test_database_edge_cases() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Test operations on empty keys
     db.set("", "empty_key".to_string());
@@ -221,7 +221,7 @@ fn test_database_edge_cases() {
 
 #[test]
 fn test_database_set_operations() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Test sadd on new set
     assert_eq!(db.sadd("myset", &["member1".to_string()]), 1);

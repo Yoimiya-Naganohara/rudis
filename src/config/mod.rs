@@ -5,6 +5,7 @@ pub struct Config {
     pub port: u16,
     pub host: String,
     pub max_connections: usize,
+    pub db_num:usize
 }
 
 impl Default for Config {
@@ -13,6 +14,7 @@ impl Default for Config {
             port: 6379,
             host: "127.0.0.1".to_string(),
             max_connections: 1000,
+            db_num:16
         }
     }
 }

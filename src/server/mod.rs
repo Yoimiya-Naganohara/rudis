@@ -20,7 +20,7 @@ impl Server {
             .await
             .map_err(Error::Io)?;
 
-        let database = Database::new_shared();
+        let database = Database::new_shared(config.db_num);
 
         Ok(Server {
             networking,

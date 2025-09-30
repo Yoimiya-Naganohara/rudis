@@ -6,7 +6,7 @@ use crate::{
         format_array, format_bulk_string, format_error, format_integer, format_null,
         format_simple_string,
     },
-    database::{HashOp, ListOp, SetOp, SharedDatabase, StringOp},
+    database::{HashOp, KeyOp, ListOp, SetOp, SharedDatabase, SortedSetOp, StringOp},
     networking::resp::RespValue,
 };
 mod errors;
@@ -19,7 +19,7 @@ pub enum Command {
 
     // String Commands
     Get(String),                 // GET key - Get value of key
-    Set(String, String),         // SET key value - Set key to hold string value
+    Set(String, String, Option<SetOptions>),         // SET key value [NX|XX] [EX|PX|KEEPTTL] - Set key to hold string value
     Del(Vec<String>),            // DEL key [key ...] - Delete one or more keys
     Incr(String),                // INCR key - Increment integer value of key by 1
     Decr(String),                // DECR key - Decrement integer value of key by 1
@@ -92,6 +92,14 @@ pub enum Command {
     SetNX(String, String), // SETNX key value - Set key only if it doesn't exist
     SetEX(String, String, String), // SETEX key seconds value - Set key with expiration
     GetSet(String, String), // GETSET key value - Set key and return old value
+}
+#[derive(Debug)]
+pub struct SetOptions {
+    pub nx: bool,
+    pub xx: bool,
+    pub ex: Option<u64>, // seconds
+    pub px: Option<u64>, // milliseconds
+    pub keepttl: bool,
 }
 pub mod command_helper {
     use crate::networking::resp::RespValue;
@@ -337,7 +345,49 @@ impl Command {
                 match command_name.as_str() {
                     "PING" => parse_command!(option, elements, Ping),
                     "GET" => parse_command!(single_key, elements, Get),
-                    "SET" => parse_command!(key_value, elements, Set),
+                    "SET" => {
+                        if elements.len() >= 3 {
+                            let key = command_helper::extract_bulk_string(&elements[1])?;
+                            let value = command_helper::extract_bulk_string(&elements[2])?;
+                            let mut options = None;
+                            if elements.len() >= 4 {
+                                let mut opts = SetOptions {
+                                    nx: false,
+                                    xx: false,
+                                    ex: None,
+                                    px: None,
+                                    keepttl: false,
+                                };
+                                let mut i = 3;
+                                while i < elements.len() {
+                                    let opt = command_helper::extract_bulk_string(&elements[i])?.to_uppercase();
+                                    match opt.as_str() {
+                                        "NX" => opts.nx = true,
+                                        "XX" => opts.xx = true,
+                                        "EX" => {
+                                            if i + 1 < elements.len() {
+                                                opts.ex = command_helper::extract_bulk_string(&elements[i+1])?.parse().ok();
+                                                i += 1;
+                                            }
+                                        }
+                                        "PX" => {
+                                            if i + 1 < elements.len() {
+                                                opts.px = command_helper::extract_bulk_string(&elements[i+1])?.parse().ok();
+                                                i += 1;
+                                            }
+                                        }
+                                        "KEEPTTL" => opts.keepttl = true,
+                                        _ => {}
+                                    }
+                                    i += 1;
+                                }
+                                options = Some(opts);
+                            }
+                            Some(Command::Set(key, value, options))
+                        } else {
+                            None
+                        }
+                    },
                     "DEL" => parse_command!(keys, elements, Del),
                     "INCR" => parse_command!(single_key, elements, Incr),
                     "DECR" => parse_command!(single_key, elements, Decr),
@@ -412,9 +462,32 @@ impl Command {
                 Some(value) => command_helper::format_bulk_string(value),
                 None => command_helper::format_null(),
             },
-            Command::Set(key, value) => {
-                db_guard.set(key, value.clone());
-                command_helper::format_simple_string("OK")
+            Command::Set(key, value, options) => {
+                let mut should_set = true;
+                if let Some(opts) = &options {
+                    let exists = db_guard.get(&key).is_some();
+                    if opts.nx && exists {
+                        should_set = false;
+                    }
+                    if opts.xx && !exists {
+                        should_set = false;
+                    }
+                }
+                if should_set {
+                    db_guard.set(&key, value.clone());
+                    if let Some(opts) = &options {
+                        if let Some(ex) = opts.ex {
+                            let _ = db_guard.expire(&key, &ex.to_string());
+                        } else if let Some(px) = opts.px {
+                            let secs = (px as f64 / 1000.0).ceil() as u64;
+                            let _ = db_guard.expire(&key, &secs.to_string());
+                        }
+                        // KEEPTTL does nothing, TTL is kept
+                    }
+                    command_helper::format_simple_string("OK")
+                } else {
+                    command_helper::format_null()
+                }
             }
             Command::Del(keys) => command_helper::format_integer(db_guard.del(keys) as i64),
             Command::Incr(key) => match db_guard.incr(key) {
@@ -554,27 +627,92 @@ impl Command {
                 Ok(res) => {format_array(res.iter().map(|v|format_bulk_string(v)).collect())},
                 Err(e) => {format_error(e)},
             },
-            Command::ZAdd(_, items) => todo!(),
-            Command::ZRem(_, items) => todo!(),
-            Command::ZRange(_, _, _) => todo!(),
-            Command::ZRangeByScore(_, _, _) => todo!(),
-            Command::ZCard(_) => todo!(),
-            Command::ZScore(_, _) => todo!(),
-            Command::ZRank(_, _) => todo!(),
-            Command::Exists(items) => todo!(),
-            Command::Expire(_, _) => todo!(),
-            Command::TTL(_) => todo!(),
-            Command::Type(_) => todo!(),
-            Command::Keys(_) => todo!(),
-            Command::FlushAll => todo!(),
-            Command::FlushDB => todo!(),
-            Command::Echo(_) => todo!(),
-            Command::Auth(_) => todo!(),
-            Command::Select(_) => todo!(),
-            Command::Info(_) => todo!(),
-            Command::SetNX(_, _) => todo!(),
-            Command::SetEX(_, _, _) => todo!(),
-            Command::GetSet(_, _) => todo!(),
+            Command::ZAdd(key, pairs) => {
+                let added = db_guard.zadd(key, pairs);
+                command_helper::format_integer(added as i64)
+            },
+            Command::ZRem(key, members) => {
+                let removed = db_guard.zrem(key, members);
+                command_helper::format_integer(removed as i64)
+            },
+            Command::ZRange(key, start, stop) => match db_guard.zrange(key, start, stop) {
+                Ok(members) => command_helper::format_array(
+                    members.iter().map(|m| command_helper::format_bulk_string(m)).collect()
+                ),
+                Err(e) => command_helper::format_error(e),
+            },
+            Command::ZRangeByScore(key, min, max) => match db_guard.zrange_by_score(key, min, max) {
+                Ok(members) => command_helper::format_array(
+                    members.iter().map(|m| command_helper::format_bulk_string(m)).collect()
+                ),
+                Err(e) => command_helper::format_error(e),
+            },
+            Command::ZCard(key) => command_helper::format_integer(db_guard.zcard(key) as i64),
+            Command::ZScore(key, member) => match db_guard.zscore(key, member) {
+                Some(score) => command_helper::format_bulk_string(&score.to_string()),
+                None => command_helper::format_null(),
+            },
+            Command::ZRank(key, member) => match db_guard.zrank(key, member) {
+                Some(rank) => command_helper::format_integer(rank as i64),
+                None => command_helper::format_null(),
+            },
+            Command::Exists(keys) => command_helper::format_integer(db_guard.exist(keys) as i64),
+            Command::Expire(key, seconds) => match db_guard.expire(key, seconds) {
+                Ok(()) => command_helper::format_simple_string("OK"),
+                Err(e) => command_helper::format_error(e),
+            },
+            Command::TTL(key) => command_helper::format_integer(db_guard.ttl(key)),
+            Command::Type(key) => {
+                // TODO: implement type checking
+                command_helper::format_simple_string("string") // placeholder
+            },
+            Command::Keys(pattern) => match db_guard.keys(pattern) {
+                Ok(keys) => command_helper::format_array(
+                    keys.iter().map(|k| command_helper::format_bulk_string(k)).collect()
+                ),
+                Err(e) => command_helper::format_error(e),
+            },
+            Command::FlushAll => {
+                db_guard.flush_all();
+                command_helper::format_simple_string("OK")
+            },
+            Command::FlushDB => {
+                db_guard.flush_db();
+                command_helper::format_simple_string("OK")
+            },
+            Command::Echo(msg) => command_helper::format_bulk_string(msg),
+            Command::Auth(_) => command_helper::format_simple_string("OK"),
+            Command::Select(db_index) => match db_index.parse::<u8>() {
+                Ok(db_num) if db_num <= 15 => {
+                    db_guard.select(db_num);
+                    command_helper::format_simple_string("OK")
+                }
+                _ => command_helper::format_error("ERR invalid DB index"),
+            },
+            Command::Info(_) => command_helper::format_bulk_string("# Server\r\nredis_version:6.0.0\r\n"),
+            Command::SetNX(key, value) => {
+                if db_guard.get(key).is_none() {
+                    db_guard.set(key, value.clone());
+                    command_helper::format_integer(1)
+                } else {
+                    command_helper::format_integer(0)
+                }
+            },
+            Command::SetEX(key, seconds, value) => {
+                db_guard.set(key, value.clone());
+                match db_guard.expire(key, seconds) {
+                    Ok(()) => command_helper::format_simple_string("OK"),
+                    Err(e) => command_helper::format_error(e),
+                }
+            },
+            Command::GetSet(key, value) => {
+                let old = db_guard.get(key).map(|s| s.to_string());
+                db_guard.set(key, value.clone());
+                match old {
+                    Some(val) => command_helper::format_bulk_string(&val),
+                    None => command_helper::format_null(),
+                }
+            },
         }
     }
 }

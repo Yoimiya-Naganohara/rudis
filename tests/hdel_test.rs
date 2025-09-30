@@ -4,7 +4,7 @@ use rudis::database::{Database, HashOp, StringOp};
 
 #[test]
 fn test_hdel_multiple_fields() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Set up a hash with multiple fields
     assert_eq!(db.hset("user:1", "name", "Alice"), Ok(1));
@@ -25,7 +25,7 @@ fn test_hdel_multiple_fields() {
 
 #[test]
 fn test_hdel_nonexistent_hash() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Try to delete from non-existent hash
     let deleted_count = db.hdel_multiple("nonexistent", &["field1".to_string(), "field2".to_string()]);
@@ -34,7 +34,7 @@ fn test_hdel_nonexistent_hash() {
 
 #[test]
 fn test_hdel_wrong_type() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Set a string value
     db.set("mystring", "value".to_string());

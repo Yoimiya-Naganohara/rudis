@@ -5,7 +5,7 @@ use rudis::commands::CommandError;
 
 #[test]
 fn test_hvals_functionality() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Test HVALS on non-existent hash
     let result = db.hvals("nonexistent");
@@ -42,7 +42,7 @@ fn test_hvals_functionality() {
 
 #[test]
 fn test_hvals_type_error() {
-    let mut db = Database::new();
+    let mut db = Database::new(16);
 
     // Set a string value
     db.set("mystring", "value".to_string());

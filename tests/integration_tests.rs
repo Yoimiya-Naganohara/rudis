@@ -8,7 +8,7 @@ use rudis::networking::resp::RespValue;
 #[test]
 fn test_command_parsing_and_execution_integration() {
     // Test that commands can be parsed and executed on a database
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
 
     // Test SET command
     let set_cmd = RespValue::Array(vec![
@@ -43,7 +43,7 @@ fn test_command_parsing_and_execution_integration() {
 #[test]
 fn test_hash_operations_integration() {
     // Test hash operations end-to-end
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
 
     // Test HSET
     let hset_cmd = RespValue::Array(vec![
@@ -89,7 +89,7 @@ fn test_hash_operations_integration() {
 #[test]
 fn test_multiple_operations_integration() {
     // Test a sequence of operations
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // SET multiple keys
@@ -121,7 +121,7 @@ fn test_multiple_operations_integration() {
 #[test]
 fn test_error_handling_integration() {
     // Test error conditions
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Test INCR on non-integer value
@@ -149,7 +149,7 @@ fn test_error_handling_integration() {
 #[test]
 fn test_numeric_operations_integration() {
     // Test INCR, DECR, INCRBY, DECRBY operations
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Test INCR on non-existent key
@@ -208,7 +208,7 @@ fn test_numeric_operations_integration() {
 #[test]
 fn test_string_operations_integration() {
     // Test APPEND and STRLEN operations
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Test APPEND on non-existent key
@@ -261,7 +261,7 @@ fn test_string_operations_integration() {
 #[test]
 fn test_del_operations_integration() {
     // Test DEL command with multiple keys
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Set up some keys
@@ -313,7 +313,7 @@ fn test_del_operations_integration() {
 #[test]
 fn test_ping_variations_integration() {
     // Test PING command variations
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Test PING without argument
@@ -341,7 +341,7 @@ fn test_ping_variations_integration() {
 #[test]
 fn test_hash_comprehensive_integration() {
     // Comprehensive hash operations test
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Set up hash with multiple fields
@@ -410,7 +410,7 @@ fn test_hash_comprehensive_integration() {
 #[test]
 fn test_type_conflicts_integration() {
     // Test WRONGTYPE errors when operations are performed on wrong data types
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Set a string value
@@ -478,7 +478,7 @@ fn test_invalid_commands_integration() {
 #[test]
 fn test_complex_sequence_integration() {
     // Test a complex sequence of operations mixing different data types
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     let commands = vec![
