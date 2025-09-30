@@ -13,7 +13,14 @@ fn test_hdel_multiple_fields() {
     assert_eq!(db.hset("user:1", "country", "USA"), Ok(1));
 
     // Delete multiple fields at once
-    let deleted_count = db.hdel_multiple("user:1", &["age".to_string(), "city".to_string(), "nonexistent".to_string()]);
+    let deleted_count = db.hdel_multiple(
+        "user:1",
+        &[
+            "age".to_string(),
+            "city".to_string(),
+            "nonexistent".to_string(),
+        ],
+    );
     assert_eq!(deleted_count, 2); // Should delete 2 fields (age and city), nonexistent doesn't count
 
     // Verify the correct fields were deleted
@@ -28,7 +35,8 @@ fn test_hdel_nonexistent_hash() {
     let mut db = Database::new(16);
 
     // Try to delete from non-existent hash
-    let deleted_count = db.hdel_multiple("nonexistent", &["field1".to_string(), "field2".to_string()]);
+    let deleted_count =
+        db.hdel_multiple("nonexistent", &["field1".to_string(), "field2".to_string()]);
     assert_eq!(deleted_count, 0);
 }
 

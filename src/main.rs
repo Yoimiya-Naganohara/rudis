@@ -1,20 +1,16 @@
 use std::process;
 use tracing::{error, info};
 
-mod server;
 mod commands;
-mod database;
-mod persistence;
-mod networking;
-mod data_structures;
 mod config;
+mod data_structures;
+mod database;
 mod error;
+mod networking;
+mod persistence;
+mod server;
 
-use crate::{
-    config::Config,
-    error::Result,
-    server::Server,
-};
+use crate::{config::Config, error::Result, server::Server};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,7 +24,11 @@ async fn main() -> Result<()> {
 
     // Initialize and start the server
     let server = Server::new(config).await?;
-    info!("📡 Server listening on {}:{}", server.config().host, server.config().port);
+    info!(
+        "📡 Server listening on {}:{}",
+        server.config().host,
+        server.config().port
+    );
 
     if let Err(e) = server.run().await {
         error!("❌ Server error: {}", e);

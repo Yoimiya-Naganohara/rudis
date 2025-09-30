@@ -12,17 +12,17 @@ use crate::{
 mod errors;
 pub use errors::*;
 use serde_json::value;
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Command {
     // Connection Commands
     Ping(Option<String>), // PING [message] - Test connection, optionally echo message
-
+    Quit,
     // String Commands
-    Get(String),                 // GET key - Get value of key
-    Set(String, String, Option<SetOptions>),         // SET key value [NX|XX] [EX|PX|KEEPTTL] - Set key to hold string value
-    Del(Vec<String>),            // DEL key [key ...] - Delete one or more keys
-    Incr(String),                // INCR key - Increment integer value of key by 1
-    Decr(String),                // DECR key - Decrement integer value of key by 1
+    Get(String),                             // GET key - Get value of key
+    Set(String, String, Option<SetOptions>), // SET key value [NX|XX] [EX|PX|KEEPTTL] - Set key to hold string value
+    Del(Vec<String>),                        // DEL key [key ...] - Delete one or more keys
+    Incr(String),                            // INCR key - Increment integer value of key by 1
+    Decr(String),                            // DECR key - Decrement integer value of key by 1
     IncrBy(String, String), // INCRBY key increment - Increment integer value of key by increment
     DecrBy(String, String), // DECRBY key decrement - Decrement integer value of key by decrement
     Append(String, String), // APPEND key value - Append value to key
@@ -93,7 +93,7 @@ pub enum Command {
     SetEX(String, String, String), // SETEX key seconds value - Set key with expiration
     GetSet(String, String), // GETSET key value - Set key and return old value
 }
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct SetOptions {
     pub nx: bool,
     pub xx: bool,
@@ -101,182 +101,7 @@ pub struct SetOptions {
     pub px: Option<u64>, // milliseconds
     pub keepttl: bool,
 }
-pub mod command_helper {
-    use crate::networking::resp::RespValue;
-
-    // Helper function to extract BulkString value
-    pub fn extract_bulk_string(resp_value: &RespValue) -> Option<String> {
-        match resp_value {
-            RespValue::BulkString(Some(s)) => Some(s.clone()),
-            _ => None,
-        }
-    }
-
-    // Helper function to extract multiple BulkString values
-    pub fn extract_bulk_strings(elements: &[RespValue]) -> Option<Vec<String>> {
-        elements.iter().map(extract_bulk_string).collect()
-    }
-
-    // Helper function for commands with single key
-    pub fn parse_single_key_command(elements: &[RespValue], expected_len: usize) -> Option<String> {
-        if elements.len() == expected_len {
-            extract_bulk_string(&elements[1])
-        } else {
-            None
-        }
-    }
-
-    // Helper function for commands with key and value
-    pub fn parse_key_value_command(
-        elements: &[RespValue],
-        expected_len: usize,
-    ) -> Option<(String, String)> {
-        if elements.len() == expected_len {
-            let key = extract_bulk_string(&elements[1])?;
-            let value = extract_bulk_string(&elements[2])?;
-            Some((key, value))
-        } else {
-            None
-        }
-    }
-
-    // Helper function for commands with key, field, and value
-    pub fn parse_key_field_value_command(
-        elements: &[RespValue],
-        expected_len: usize,
-    ) -> Option<(String, String, String)> {
-        if elements.len() == expected_len {
-            let key = extract_bulk_string(&elements[1])?;
-            let field = extract_bulk_string(&elements[2])?;
-            let value = extract_bulk_string(&elements[3])?;
-            Some((key, field, value))
-        } else {
-            None
-        }
-    }
-
-    // Helper function for commands with multiple keys
-    pub fn parse_keys_command(
-        elements: &[RespValue],
-        min_required_len: usize,
-    ) -> Option<Vec<String>> {
-        if elements.len() >= min_required_len {
-            extract_bulk_strings(&elements[1..])
-        } else {
-            None
-        }
-    }
-
-    // Helper function for commands with key and multiple fields
-    pub fn parse_key_fields_command(
-        elements: &[RespValue],
-        min_required_len: usize,
-    ) -> Option<(String, Vec<String>)> {
-        if elements.len() >= min_required_len {
-            let key = extract_bulk_string(&elements[1])?;
-            let fields = extract_bulk_strings(&elements[2..])?;
-            Some((key, fields))
-        } else {
-            None
-        }
-    }
-
-    // Helper function for commands with multiple key-value pairs
-    pub fn parse_keys_values_command(
-        elements: &[RespValue],
-        min_required_len: usize,
-    ) -> Option<Vec<(String, String)>> {
-        if elements.len() >= min_required_len && elements.len() % 2 == 1 {
-            extract_key_value_strings(&elements[1..])
-        } else {
-            None
-        }
-    }
-    pub fn parse_key_pair_values_command(
-        elements: &[RespValue],
-        min_required_len: usize,
-    ) -> Option<(String, Vec<(String, String)>)> {
-        if elements.len() >= min_required_len && elements.len() % 2 == 1 {
-            let key = extract_bulk_string(&elements[1])?;
-            let pairs = extract_key_value_strings(&elements[2..])?;
-            Some((key, pairs))
-        } else {
-            None
-        }
-    }
-    pub fn parse_key_ord_pivot_value_command(
-        elements: &[RespValue],
-        expected_len: usize,
-    ) -> Option<(String, String, String, String)> {
-        if elements.len() == expected_len {
-            Some((
-                extract_bulk_string(&elements[1])?, // key
-                extract_bulk_string(&elements[2])?, // BEFORE/AFTER
-                extract_bulk_string(&elements[3])?, // pivot
-                extract_bulk_string(&elements[4])?, // element
-            ))
-        } else {
-            None
-        }
-    }
-    // Helper function to extract key-value pairs from bulk strings
-    pub fn extract_key_value_strings(elements: &[RespValue]) -> Option<Vec<(String, String)>> {
-        elements
-            .chunks(2)
-            .into_iter()
-            .map(|value| {
-                if value.len() == 2 {
-                    if let (RespValue::BulkString(Some(key)), RespValue::BulkString(Some(val))) =
-                        (&value[0], &value[1])
-                    {
-                        Some((key.clone(), val.clone()))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect::<Option<Vec<_>>>()
-    }
-
-    // Helper functions for response formatting
-    pub fn format_integer(value: i64) -> String {
-        format!(":{}\r\n", value)
-    }
-
-    pub fn format_array(elements: Vec<String>) -> String {
-        let mut result = format!("*{}\r\n", elements.len());
-        for element in elements {
-            result.push_str(&element);
-        }
-        result
-    }
-
-    pub fn format_error(error: impl std::fmt::Display) -> String {
-        format!("-ERR {}\r\n", error)
-    }
-
-    pub fn format_bulk_string(value: &str) -> String {
-        format!("${}\r\n{}\r\n", value.len(), value)
-    }
-
-    pub fn format_null() -> String {
-        "$-1\r\n".to_string()
-    }
-
-    pub fn format_simple_string(value: &str) -> String {
-        format!("+{}\r\n", value)
-    }
-
-    pub fn format_hash_response(value: Vec<&String>) -> String {
-        let mut result = format!("*{}\r\n", value.len());
-        for item in value {
-            result.push_str(&format!("${}\r\n{}\r\n", item.len(), item));
-        }
-        result
-    }
-}
+pub mod command_helper;
 
 macro_rules! parse_command {
     // Single key commands
@@ -317,6 +142,10 @@ macro_rules! parse_command {
         command_helper::parse_key_ord_pivot_value_command($elements, 5)
             .map(|(k, o, p, v)| Command::$variant(k, o, p, v))
     };
+    (key_value_options,$elements:expr,$variant:ident) => {
+        command_helper::parse_key_value_options_command($elements, 3)
+            .map(|(k, v, o)| Command::$variant(k, v, o))
+    };
     (none,$elements:expr,$variant:ident) => {
         match $elements.len() {
             1 => Some(Command::$variant),
@@ -344,50 +173,11 @@ impl Command {
 
                 match command_name.as_str() {
                     "PING" => parse_command!(option, elements, Ping),
+                    "QUIT" => parse_command!(none, elements, Quit),
                     "GET" => parse_command!(single_key, elements, Get),
                     "SET" => {
-                        if elements.len() >= 3 {
-                            let key = command_helper::extract_bulk_string(&elements[1])?;
-                            let value = command_helper::extract_bulk_string(&elements[2])?;
-                            let mut options = None;
-                            if elements.len() >= 4 {
-                                let mut opts = SetOptions {
-                                    nx: false,
-                                    xx: false,
-                                    ex: None,
-                                    px: None,
-                                    keepttl: false,
-                                };
-                                let mut i = 3;
-                                while i < elements.len() {
-                                    let opt = command_helper::extract_bulk_string(&elements[i])?.to_uppercase();
-                                    match opt.as_str() {
-                                        "NX" => opts.nx = true,
-                                        "XX" => opts.xx = true,
-                                        "EX" => {
-                                            if i + 1 < elements.len() {
-                                                opts.ex = command_helper::extract_bulk_string(&elements[i+1])?.parse().ok();
-                                                i += 1;
-                                            }
-                                        }
-                                        "PX" => {
-                                            if i + 1 < elements.len() {
-                                                opts.px = command_helper::extract_bulk_string(&elements[i+1])?.parse().ok();
-                                                i += 1;
-                                            }
-                                        }
-                                        "KEEPTTL" => opts.keepttl = true,
-                                        _ => {}
-                                    }
-                                    i += 1;
-                                }
-                                options = Some(opts);
-                            }
-                            Some(Command::Set(key, value, options))
-                        } else {
-                            None
-                        }
-                    },
+                        parse_command!(key_value_options, elements, Set)
+                    }
                     "DEL" => parse_command!(keys, elements, Del),
                     "INCR" => parse_command!(single_key, elements, Incr),
                     "DECR" => parse_command!(single_key, elements, Decr),
@@ -458,6 +248,7 @@ impl Command {
         match self {
             Command::Ping(None) => command_helper::format_simple_string("PONG"),
             Command::Ping(Some(msg)) => command_helper::format_simple_string(msg),
+            Command::Quit => "#QUIT".to_owned(),
             Command::Get(key) => match db_guard.get(key) {
                 Some(value) => command_helper::format_bulk_string(value),
                 None => command_helper::format_null(),
@@ -607,46 +398,60 @@ impl Command {
                     Err(e) => format_error(e),
                 }
             }
-            Command::SAdd(key, values) => format_integer(db_guard.sadd(key, values)as i64),
-            Command::SRem(key,values) => format_integer(db_guard.srem(key, values)as i64),
-            Command::SMembers(key) => (match db_guard.smembers(key) {
-                Ok(value) => {format_array(value.iter().map(|v|format_bulk_string(v)).collect())},
-                Err(e) => {format_error(e)},
-            }),
-            Command::SCard(key) => format_integer(db_guard.scard(key)as i64),
-            Command::SIsMember(key,member) => format_integer(db_guard.sismember(key, member)as i64),
+            Command::SAdd(key, values) => format_integer(db_guard.sadd(key, values) as i64),
+            Command::SRem(key, values) => format_integer(db_guard.srem(key, values) as i64),
+            Command::SMembers(key) => {
+                (match db_guard.smembers(key) {
+                    Ok(value) => {
+                        format_array(value.iter().map(|v| format_bulk_string(v)).collect())
+                    }
+                    Err(e) => format_error(e),
+                })
+            }
+            Command::SCard(key) => format_integer(db_guard.scard(key) as i64),
+            Command::SIsMember(key, member) => {
+                format_integer(db_guard.sismember(key, member) as i64)
+            }
             Command::SInter(items) => match db_guard.sinter(items) {
-                Ok(res) => {format_array(res.iter().map(|v|format_bulk_string(v)).collect())},
-                Err(e) => {format_error(e)},
+                Ok(res) => format_array(res.iter().map(|v| format_bulk_string(v)).collect()),
+                Err(e) => format_error(e),
             },
-            Command::SUnion(items) =>  match db_guard.sunion(items) {
-                Ok(res) => {format_array(res.iter().map(|v|format_bulk_string(v)).collect())},
-                Err(e) => {format_error(e)},
+            Command::SUnion(items) => match db_guard.sunion(items) {
+                Ok(res) => format_array(res.iter().map(|v| format_bulk_string(v)).collect()),
+                Err(e) => format_error(e),
             },
-            Command::SDiff(items) =>  match db_guard.sdiff(items) {
-                Ok(res) => {format_array(res.iter().map(|v|format_bulk_string(v)).collect())},
-                Err(e) => {format_error(e)},
+            Command::SDiff(items) => match db_guard.sdiff(items) {
+                Ok(res) => format_array(res.iter().map(|v| format_bulk_string(v)).collect()),
+                Err(e) => format_error(e),
             },
             Command::ZAdd(key, pairs) => {
                 let added = db_guard.zadd(key, pairs);
                 command_helper::format_integer(added as i64)
-            },
+            }
             Command::ZRem(key, members) => {
                 let removed = db_guard.zrem(key, members);
                 command_helper::format_integer(removed as i64)
-            },
+            }
             Command::ZRange(key, start, stop) => match db_guard.zrange(key, start, stop) {
                 Ok(members) => command_helper::format_array(
-                    members.iter().map(|m| command_helper::format_bulk_string(m)).collect()
+                    members
+                        .iter()
+                        .map(|m| command_helper::format_bulk_string(m))
+                        .collect(),
                 ),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::ZRangeByScore(key, min, max) => match db_guard.zrange_by_score(key, min, max) {
-                Ok(members) => command_helper::format_array(
-                    members.iter().map(|m| command_helper::format_bulk_string(m)).collect()
-                ),
-                Err(e) => command_helper::format_error(e),
-            },
+            Command::ZRangeByScore(key, min, max) => {
+                match db_guard.zrange_by_score(key, min, max) {
+                    Ok(members) => command_helper::format_array(
+                        members
+                            .iter()
+                            .map(|m| command_helper::format_bulk_string(m))
+                            .collect(),
+                    ),
+                    Err(e) => command_helper::format_error(e),
+                }
+            }
             Command::ZCard(key) => command_helper::format_integer(db_guard.zcard(key) as i64),
             Command::ZScore(key, member) => match db_guard.zscore(key, member) {
                 Some(score) => command_helper::format_bulk_string(&score.to_string()),
@@ -665,21 +470,23 @@ impl Command {
             Command::Type(key) => {
                 // TODO: implement type checking
                 command_helper::format_simple_string("string") // placeholder
-            },
+            }
             Command::Keys(pattern) => match db_guard.keys(pattern) {
                 Ok(keys) => command_helper::format_array(
-                    keys.iter().map(|k| command_helper::format_bulk_string(k)).collect()
+                    keys.iter()
+                        .map(|k| command_helper::format_bulk_string(k))
+                        .collect(),
                 ),
                 Err(e) => command_helper::format_error(e),
             },
             Command::FlushAll => {
                 db_guard.flush_all();
                 command_helper::format_simple_string("OK")
-            },
+            }
             Command::FlushDB => {
                 db_guard.flush_db();
                 command_helper::format_simple_string("OK")
-            },
+            }
             Command::Echo(msg) => command_helper::format_bulk_string(msg),
             Command::Auth(_) => command_helper::format_simple_string("OK"),
             Command::Select(db_index) => match db_index.parse::<u8>() {
@@ -689,7 +496,9 @@ impl Command {
                 }
                 _ => command_helper::format_error("ERR invalid DB index"),
             },
-            Command::Info(_) => command_helper::format_bulk_string("# Server\r\nredis_version:6.0.0\r\n"),
+            Command::Info(_) => {
+                command_helper::format_bulk_string("# Server\r\nredis_version:6.0.0\r\n")
+            }
             Command::SetNX(key, value) => {
                 if db_guard.get(key).is_none() {
                     db_guard.set(key, value.clone());
@@ -697,14 +506,14 @@ impl Command {
                 } else {
                     command_helper::format_integer(0)
                 }
-            },
+            }
             Command::SetEX(key, seconds, value) => {
                 db_guard.set(key, value.clone());
                 match db_guard.expire(key, seconds) {
                     Ok(()) => command_helper::format_simple_string("OK"),
                     Err(e) => command_helper::format_error(e),
                 }
-            },
+            }
             Command::GetSet(key, value) => {
                 let old = db_guard.get(key).map(|s| s.to_string());
                 db_guard.set(key, value.clone());
@@ -712,7 +521,7 @@ impl Command {
                     Some(val) => command_helper::format_bulk_string(&val),
                     None => command_helper::format_null(),
                 }
-            },
+            }
         }
     }
 }

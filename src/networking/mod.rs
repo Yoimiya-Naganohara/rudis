@@ -1,7 +1,7 @@
 // Networking module for Rudis
 // Handles TCP connections and protocol parsing
 pub mod resp;
-use crate::commands::{Command, command_helper::format_error};
+use crate::commands::{command_helper::format_error, Command};
 use crate::{database::SharedDatabase, networking::resp::RespParser};
 use std::{io, net::SocketAddr};
 use tokio::{
@@ -40,22 +40,26 @@ impl Networking {
         loop {
             match parser.read_value(&mut buf_reader).await {
                 Ok(resp_value) => {
-                    dbg!(&resp_value);
+                    // dbg!(&resp_value);
                     let response = match Command::parse(&resp_value) {
                         Some(cmd) => {
-                            println!("Parsed command: {:?}", cmd);
+                            // println!("Parsed command: {:?}", cmd);
+                            if cmd == Command::Quit {
+                                break;
+                            }
                             cmd.execute(&db).await
                         }
-                        
+
                         None => format_error(crate::commands::CommandError::UnknownCommand),
                     };
                     writer.write_all(response.as_bytes()).await?;
                 }
                 Err(e) => {
-                    if e.kind() == io::ErrorKind::UnexpectedEof {
-                        break;
-                    }
-                    eprintln!("Read error: {e}")
+                    // if e.kind() == io::ErrorKind::UnexpectedEof {
+                    //     break;
+                    // }
+                    // eprintln!("Read error: {e}")
+                    break;
                 }
             }
             // line.clear();

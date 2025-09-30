@@ -1,9 +1,9 @@
 // Unit tests for Rudis data structures
 // Tests individual components in isolation
 
-use rudis::data_structures::{RedisString, RedisHash, RedisList, RedisSet, RedisSortedSet};
-use rudis::database::{Database, StringOp, HashOp, SetOp};
 use rudis::commands::CommandError;
+use rudis::data_structures::{RedisHash, RedisList, RedisSet, RedisSortedSet, RedisString};
+use rudis::database::{Database, HashOp, SetOp, StringOp};
 
 #[test]
 fn test_redis_string_operations() {
@@ -225,7 +225,10 @@ fn test_database_set_operations() {
 
     // Test sadd on new set
     assert_eq!(db.sadd("myset", &["member1".to_string()]), 1);
-    assert_eq!(db.sadd("myset", &["member2".to_string(), "member3".to_string()]), 2);
+    assert_eq!(
+        db.sadd("myset", &["member2".to_string(), "member3".to_string()]),
+        2
+    );
 
     // Test sadd on existing members
     assert_eq!(db.sadd("myset", &["member1".to_string()]), 0);

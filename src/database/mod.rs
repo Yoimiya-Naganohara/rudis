@@ -1,14 +1,14 @@
 // Database module for Rudis
 // In-memory data store implementation
 
-use crate::commands::CommandError;
+use crate::commands::{CommandError, Result};
 use crate::data_structures::{
     list, set, sorted_set, RedisHash, RedisList, RedisSet, RedisSortedSet, RedisString,
 };
+use regex::Regex;
 use std::collections::HashSet;
 use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, sync::Arc};
-use regex::Regex;
 use tokio::sync::Mutex;
 
 // Type definitions
@@ -35,26 +35,26 @@ pub trait StringOp {
     fn get(&self, key: &str) -> Option<&str>;
     fn set(&mut self, key: &str, value: String);
     fn del(&mut self, keys: &Vec<String>) -> usize;
-    fn incr(&mut self, key: &str) -> Result<i64, CommandError>;
-    fn decr(&mut self, key: &str) -> Result<i64, CommandError>;
-    fn incr_by(&mut self, key: &str, value: &str) -> Result<i64, CommandError>;
-    fn decr_by(&mut self, key: &str, value: &str) -> Result<i64, CommandError>;
+    fn incr(&mut self, key: &str) -> Result<i64>;
+    fn decr(&mut self, key: &str) -> Result<i64>;
+    fn incr_by(&mut self, key: &str, value: &str) -> Result<i64>;
+    fn decr_by(&mut self, key: &str, value: &str) -> Result<i64>;
     fn append(&mut self, key: &str, value: &str) -> usize;
     fn str_len(&self, key: &str) -> usize;
 }
 
 pub trait HashOp {
-    fn hset(&mut self, hash: &str, field: &str, value: &str) -> Result<i64, CommandError>;
-    fn hget(&self, hash: &str, field: &str) -> Result<Option<&String>, CommandError>;
+    fn hset(&mut self, hash: &str, field: &str, value: &str) -> Result<i64>;
+    fn hget(&self, hash: &str, field: &str) -> Result<Option<&String>>;
     fn hdel(&mut self, hash: &str, field: &str) -> bool;
     fn hdel_multiple(&mut self, hash: &str, fields: &[String]) -> usize;
-    fn hget_all(&self, hash: &str) -> Result<Vec<&String>, CommandError>;
-    fn hkeys(&self, hash: &str) -> Result<Vec<&String>, CommandError>;
-    fn hvals(&self, hash: &str) -> Result<Vec<&String>, CommandError>;
-    fn hlen(&self, hash: &str) -> Result<usize, CommandError>;
-    fn hexists(&self, hash: &str, field: &str) -> Result<bool, CommandError>;
-    fn hincrby(&mut self, hash: &str, field: &str, value: &str) -> Result<i64, CommandError>;
-    fn hincrbyfloat(&mut self, hash: &str, field: &str, value: &str) -> Result<f64, CommandError>;
+    fn hget_all(&self, hash: &str) -> Result<Vec<&String>>;
+    fn hkeys(&self, hash: &str) -> Result<Vec<&String>>;
+    fn hvals(&self, hash: &str) -> Result<Vec<&String>>;
+    fn hlen(&self, hash: &str) -> Result<usize>;
+    fn hexists(&self, hash: &str, field: &str) -> Result<bool>;
+    fn hincrby(&mut self, hash: &str, field: &str, value: &str) -> Result<i64>;
+    fn hincrbyfloat(&mut self, hash: &str, field: &str, value: &str) -> Result<f64>;
 }
 
 pub trait ListOp {
@@ -64,46 +64,35 @@ pub trait ListOp {
     fn rpop(&mut self, key: &str) -> Option<String>;
     fn llen(&self, key: &str) -> usize;
     fn lindex(&self, key: &str, index: &str) -> Option<&String>;
-    fn lrange(&self, key: &str, start: &str, end: &str) -> Result<Vec<&String>, CommandError>;
-    fn ltrim(&mut self, key: &str, start: &str, end: &str) -> Result<(), CommandError>;
-    fn lset(&mut self, key: &str, index: &str, value: String) -> Result<(), CommandError>;
-    fn linsert(
-        &mut self,
-        key: &str,
-        ord: &str,
-        pivot: &str,
-        value: String,
-    ) -> Result<i64, CommandError>;
+    fn lrange(&self, key: &str, start: &str, end: &str) -> Result<Vec<&String>>;
+    fn ltrim(&mut self, key: &str, start: &str, end: &str) -> Result<()>;
+    fn lset(&mut self, key: &str, index: &str, value: String) -> Result<()>;
+    fn linsert(&mut self, key: &str, ord: &str, pivot: &str, value: String) -> Result<i64>;
 }
 pub trait SetOp {
     fn sadd(&mut self, key: &str, values: &[String]) -> usize;
     fn srem(&mut self, key: &str, values: &[String]) -> usize;
-    fn smembers(&self, key: &str) -> Result<Vec<&String>, CommandError>;
+    fn smembers(&self, key: &str) -> Result<Vec<&String>>;
     fn scard(&mut self, key: &str) -> usize;
     fn sismember(&self, key: &str, member: &str) -> bool;
-    fn sinter(&self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
-    fn sunion(&self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
-    fn sdiff(&self, keys: &[String]) -> Result<Vec<&String>, CommandError>;
+    fn sinter(&self, keys: &[String]) -> Result<Vec<&String>>;
+    fn sunion(&self, keys: &[String]) -> Result<Vec<&String>>;
+    fn sdiff(&self, keys: &[String]) -> Result<Vec<&String>>;
 }
 pub trait SortedSetOp {
     fn zadd(&mut self, key: &str, pair: &[(String, String)]) -> usize;
     fn zrem(&mut self, key: &str, values: &[String]) -> usize;
-    fn zrange(&mut self, key: &str, start: &str, stop: &str) -> Result<Vec<&String>, CommandError>;
-    fn zrange_by_score(
-        &mut self,
-        key: &str,
-        min: &str,
-        max: &str,
-    ) -> Result<Vec<&String>, CommandError>;
+    fn zrange(&mut self, key: &str, start: &str, stop: &str) -> Result<Vec<&String>>;
+    fn zrange_by_score(&mut self, key: &str, min: &str, max: &str) -> Result<Vec<&String>>;
     fn zcard(&mut self, key: &str) -> usize;
     fn zscore(&mut self, key: &str, member: &str) -> Option<f64>;
     fn zrank(&mut self, key: &str, member: &str) -> Option<usize>;
 }
 pub trait KeyOp {
     fn exist(&self, keys: &[String]) -> usize;
-    fn expire(&mut self, key: &str, seconds: &str) -> Result<(), CommandError>;
+    fn expire(&mut self, key: &str, seconds: &str) -> Result<()>;
     fn ttl(&mut self, key: &str) -> i64;
-    fn keys(&self, pattern: &str) -> Result<Vec<&String>,CommandError>;
+    fn keys(&self, pattern: &str) -> Result<Vec<&String>>;
     fn flush_all(&mut self) -> bool;
     fn flush_db(&mut self) -> bool;
     fn select(&mut self, db: u8);
@@ -111,23 +100,26 @@ pub trait KeyOp {
 
 impl KeyOp for Database {
     fn exist(&self, keys: &[String]) -> usize {
-        keys.iter().filter(|key| self.current_data().contains_key(*key)).count()
+        keys.iter()
+            .filter(|key| self.current_data().contains_key(*key))
+            .count()
     }
 
-    fn expire(&mut self, key: &str, seconds: &str) -> Result<(), CommandError> {
-        if let Some(time) = self.current_expiration_mut().get_mut(key) {
-            if let Ok(secs) = seconds.parse() {
-                if let Some(new_time) = SystemTime::now().checked_add(Duration::from_secs(secs)) {
+    fn expire(&mut self, key: &str, seconds: &str) -> Result<()> {
+        if let Ok(secs) = seconds.parse() {
+            if let Some(new_time) = SystemTime::now().checked_add(Duration::from_secs(secs)) {
+                if let Some(time) = self.current_expiration_mut().get_mut(key) {
                     *time = new_time;
-                    Ok(())
                 } else {
-                    Err(CommandError::InvalidRange)
+                    self.current_expiration_mut()
+                        .insert(key.to_owned(), new_time);
                 }
+                Ok(())
             } else {
-                Err(CommandError::InvalidInteger)
+                Err(CommandError::InvalidRange)
             }
         } else {
-            Err(CommandError::KeyNotFound)
+            Err(CommandError::InvalidInteger)
         }
     }
 
@@ -144,12 +136,16 @@ impl KeyOp for Database {
         }
     }
 
-    fn keys(&self, pattern: &str) -> Result<Vec<&String>,CommandError> {
-      if let Ok(regex) = Regex::new(pattern) {
-        Ok(self.current_data().keys().filter(|k|regex.is_match(k)).collect())
-       }else {
-           Err(CommandError::SyntaxError)
-       }
+    fn keys(&self, pattern: &str) -> Result<Vec<&String>> {
+        if let Ok(regex) = Regex::new(pattern) {
+            Ok(self
+                .current_data()
+                .keys()
+                .filter(|k| regex.is_match(k))
+                .collect())
+        } else {
+            Err(CommandError::SyntaxError)
+        }
     }
 
     fn flush_all(&mut self) -> bool {
@@ -159,18 +155,21 @@ impl KeyOp for Database {
     }
 
     fn flush_db(&mut self) -> bool {
-       for i in 0..self.data.len() {
-           self.data.get_mut(&(i as u8)).unwrap().clear();
-           self.data_expiration_time.get_mut(&(i as u8)).unwrap().clear();
-       }
+        for i in 0..self.data.len() {
+            self.data.get_mut(&(i as u8)).unwrap().clear();
+            self.data_expiration_time
+                .get_mut(&(i as u8))
+                .unwrap()
+                .clear();
+        }
         true
     }
-    
+
     fn select(&mut self, db: u8) {
         if db as usize >= self.data.len() {
-            return ;
+            return;
         }
-        self.current_db=db;
+        self.current_db = db;
     }
 }
 impl SortedSetOp for Database {
@@ -199,7 +198,7 @@ impl SortedSetOp for Database {
         }
     }
 
-    fn zrange(&mut self, key: &str, start: &str, stop: &str) -> Result<Vec<&String>, CommandError> {
+    fn zrange(&mut self, key: &str, start: &str, stop: &str) -> Result<Vec<&String>> {
         if let Some(RedisValue::SortedSet(sorted_set)) = self.current_data_mut().get_mut(key) {
             if let Ok(start) = start.parse() {
                 if let Ok(stop) = stop.parse() {
@@ -215,12 +214,7 @@ impl SortedSetOp for Database {
         }
     }
 
-    fn zrange_by_score(
-        &mut self,
-        key: &str,
-        min: &str,
-        max: &str,
-    ) -> Result<Vec<&String>, CommandError> {
+    fn zrange_by_score(&mut self, key: &str, min: &str, max: &str) -> Result<Vec<&String>> {
         if let Some(RedisValue::SortedSet(sorted_set)) = self.current_data_mut().get(key) {
             if let Ok(min) = min.parse() {
                 if let Ok(max) = max.parse() {
@@ -277,7 +271,8 @@ impl SetOp for Database {
                     .iter()
                     .filter(|val| new_set.sadd((*val).clone()))
                     .count();
-                self.current_data_mut().insert(key.to_string(), RedisValue::Set(new_set));
+                self.current_data_mut()
+                    .insert(key.to_string(), RedisValue::Set(new_set));
                 added
             }
         }
@@ -291,7 +286,7 @@ impl SetOp for Database {
         }
     }
 
-    fn smembers(&self, key: &str) -> Result<Vec<&String>, CommandError> {
+    fn smembers(&self, key: &str) -> Result<Vec<&String>> {
         if let Some(RedisValue::Set(set)) = self.current_data().get(key) {
             Ok(set.smembers())
         } else {
@@ -315,7 +310,7 @@ impl SetOp for Database {
         }
     }
 
-    fn sinter(&self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
+    fn sinter(&self, keys: &[String]) -> Result<Vec<&String>> {
         let mut res = Vec::new();
         for key in keys {
             if let Some(RedisValue::Set(set)) = self.current_data().get(key) {
@@ -329,7 +324,7 @@ impl SetOp for Database {
         Ok(res)
     }
 
-    fn sunion(&self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
+    fn sunion(&self, keys: &[String]) -> Result<Vec<&String>> {
         match self.sinter(keys) {
             Ok(res) => Ok(res
                 .into_iter()
@@ -340,7 +335,7 @@ impl SetOp for Database {
         }
     }
 
-    fn sdiff(&self, keys: &[String]) -> Result<Vec<&String>, CommandError> {
+    fn sdiff(&self, keys: &[String]) -> Result<Vec<&String>> {
         match self.smembers(&keys[0]) {
             Ok(res) => {
                 let mut res: HashSet<_> = res.into_iter().collect();
@@ -388,19 +383,19 @@ impl StringOp for Database {
             .count()
     }
 
-    fn incr(&mut self, key: &str) -> Result<i64, CommandError> {
+    fn incr(&mut self, key: &str) -> Result<i64> {
         self.add_value(key, 1)
     }
 
-    fn decr(&mut self, key: &str) -> Result<i64, CommandError> {
+    fn decr(&mut self, key: &str) -> Result<i64> {
         self.add_value(key, -1)
     }
 
-    fn incr_by(&mut self, key: &str, value: &str) -> Result<i64, CommandError> {
+    fn incr_by(&mut self, key: &str, value: &str) -> Result<i64> {
         self.add_value_by_str(key, value, 1)
     }
 
-    fn decr_by(&mut self, key: &str, value: &str) -> Result<i64, CommandError> {
+    fn decr_by(&mut self, key: &str, value: &str) -> Result<i64> {
         self.add_value_by_str(key, value, -1)
     }
 
@@ -427,7 +422,7 @@ impl StringOp for Database {
 }
 
 impl HashOp for Database {
-    fn hset(&mut self, hash: &str, field: &str, value: &str) -> Result<i64, CommandError> {
+    fn hset(&mut self, hash: &str, field: &str, value: &str) -> Result<i64> {
         match self.current_data_mut().get_mut(hash) {
             Some(RedisValue::Hash(existing_hash)) => {
                 // Hash exists, update/add the field
@@ -449,7 +444,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hget(&self, hash: &str, field: &str) -> Result<Option<&String>, CommandError> {
+    fn hget(&self, hash: &str, field: &str) -> Result<Option<&String>> {
         match self.current_data().get(hash) {
             Some(RedisValue::Hash(existing_hash)) => Ok(existing_hash.hget(field)),
             Some(_) => Err(CommandError::WrongType),
@@ -476,7 +471,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hget_all(&self, hash: &str) -> Result<Vec<&String>, CommandError> {
+    fn hget_all(&self, hash: &str) -> Result<Vec<&String>> {
         match self.current_data().get(hash) {
             Some(RedisValue::Hash(existing_hash)) => {
                 Ok(existing_hash.flatten().collect::<Vec<&String>>())
@@ -486,7 +481,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hkeys(&self, hash: &str) -> Result<Vec<&String>, CommandError> {
+    fn hkeys(&self, hash: &str) -> Result<Vec<&String>> {
         match self.current_data().get(hash) {
             Some(RedisValue::Hash(existing_hash)) => {
                 Ok(existing_hash.keys().collect::<Vec<&String>>())
@@ -496,7 +491,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hvals(&self, hash: &str) -> Result<Vec<&String>, CommandError> {
+    fn hvals(&self, hash: &str) -> Result<Vec<&String>> {
         match self.current_data().get(hash) {
             Some(RedisValue::Hash(existing_hash)) => {
                 Ok(existing_hash.values().collect::<Vec<&String>>())
@@ -506,7 +501,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hlen(&self, hash: &str) -> Result<usize, CommandError> {
+    fn hlen(&self, hash: &str) -> Result<usize> {
         match self.current_data().get(hash) {
             Some(RedisValue::Hash(existing_hash)) => Ok(existing_hash.len()),
             Some(_) => Err(CommandError::WrongType),
@@ -514,7 +509,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hexists(&self, hash: &str, field: &str) -> Result<bool, CommandError> {
+    fn hexists(&self, hash: &str, field: &str) -> Result<bool> {
         match self.current_data().get(hash) {
             Some(RedisValue::Hash(existing_hash)) => Ok(existing_hash.hexists(field)),
             Some(_) => Err(CommandError::WrongType),
@@ -522,7 +517,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hincrby(&mut self, hash: &str, field: &str, value: &str) -> Result<i64, CommandError> {
+    fn hincrby(&mut self, hash: &str, field: &str, value: &str) -> Result<i64> {
         match self.current_data_mut().get_mut(hash) {
             Some(RedisValue::Hash(existing_hash)) => match value.parse::<i64>() {
                 Ok(integer) => match existing_hash.hincrby(field, integer) {
@@ -550,7 +545,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hincrbyfloat(&mut self, hash: &str, field: &str, value: &str) -> Result<f64, CommandError> {
+    fn hincrbyfloat(&mut self, hash: &str, field: &str, value: &str) -> Result<f64> {
         match self.current_data_mut().get_mut(hash) {
             Some(RedisValue::Hash(existing_hash)) => match value.parse::<f64>() {
                 Ok(float_val) => match existing_hash.hincrbyfloat(field, float_val) {
@@ -633,7 +628,7 @@ impl ListOp for Database {
         }
     }
 
-    fn lrange(&self, key: &str, start: &str, end: &str) -> Result<Vec<&String>, CommandError> {
+    fn lrange(&self, key: &str, start: &str, end: &str) -> Result<Vec<&String>> {
         if let Some(RedisValue::List(list)) = self.current_data().get(key) {
             if let Ok(start) = start.parse() {
                 if let Ok(end) = end.parse() {
@@ -649,7 +644,7 @@ impl ListOp for Database {
         }
     }
 
-    fn ltrim(&mut self, key: &str, start: &str, end: &str) -> Result<(), CommandError> {
+    fn ltrim(&mut self, key: &str, start: &str, end: &str) -> Result<()> {
         if let Some(RedisValue::List(list)) = self.current_data_mut().get_mut(key) {
             if let Ok(start) = start.parse() {
                 if let Ok(end) = end.parse() {
@@ -665,7 +660,7 @@ impl ListOp for Database {
         }
     }
 
-    fn lset(&mut self, key: &str, index: &str, value: String) -> Result<(), CommandError> {
+    fn lset(&mut self, key: &str, index: &str, value: String) -> Result<()> {
         if let Some(RedisValue::List(list)) = self.current_data_mut().get_mut(key) {
             if let Ok(index) = index.parse() {
                 Ok(list.set(index, value))
@@ -677,13 +672,7 @@ impl ListOp for Database {
         }
     }
 
-    fn linsert(
-        &mut self,
-        key: &str,
-        ord: &str,
-        pivot: &str,
-        value: String,
-    ) -> Result<i64, CommandError> {
+    fn linsert(&mut self, key: &str, ord: &str, pivot: &str, value: String) -> Result<i64> {
         if let Some(RedisValue::List(list)) = self.current_data_mut().get_mut(key) {
             list.insert(ord, pivot, value)
         } else {
@@ -692,9 +681,9 @@ impl ListOp for Database {
     }
 }
 impl Database {
-    pub fn new(db_num:usize) -> Self {
-        let mut data=HashMap::new();
-        let mut data_expiration_time=HashMap::new();
+    pub fn new(db_num: usize) -> Self {
+        let mut data = HashMap::new();
+        let mut data_expiration_time = HashMap::new();
 
         for i in 0..db_num {
             data.insert(i as u8, HashMap::new());
@@ -706,7 +695,7 @@ impl Database {
             current_db: 0,
         }
     }
-    pub fn new_shared(db_num:usize) -> SharedDatabase {
+    pub fn new_shared(db_num: usize) -> SharedDatabase {
         Arc::new(Mutex::new(Self::new(db_num)))
     }
     fn current_data(&self) -> &HashMap<String, RedisValue> {
@@ -722,23 +711,20 @@ impl Database {
     }
 
     fn current_expiration_mut(&mut self) -> &mut HashMap<String, SystemTime> {
-        self.data_expiration_time.entry(self.current_db).or_insert(HashMap::new())
+        self.data_expiration_time
+            .entry(self.current_db)
+            .or_insert(HashMap::new())
     }
 
     // Consolidated helper for incr_by/decr_by operations
-    fn add_value_by_str(
-        &mut self,
-        key: &str,
-        value: &str,
-        multiplier: i64,
-    ) -> Result<i64, CommandError> {
+    fn add_value_by_str(&mut self, key: &str, value: &str, multiplier: i64) -> Result<i64> {
         match value.parse::<i64>() {
             Ok(integer) => self.add_value(key, integer * multiplier),
             Err(_) => Err(CommandError::InvalidInteger),
         }
     }
 
-    fn add_value(&mut self, key: &str, val: i64) -> Result<i64, CommandError> {
+    fn add_value(&mut self, key: &str, val: i64) -> Result<i64> {
         if let Some(RedisValue::String(current_value)) = self.current_data_mut().get_mut(key) {
             match current_value.parse::<i64>() {
                 Ok(integer) => {

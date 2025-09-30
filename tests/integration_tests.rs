@@ -1,8 +1,8 @@
 // Integration tests for Rudis
 // Tests the full server functionality with command parsing and execution
 
-use rudis::database::Database;
 use rudis::commands::Command;
+use rudis::database::Database;
 use rudis::networking::resp::RespValue;
 
 #[test]
@@ -98,7 +98,10 @@ fn test_multiple_operations_integration() {
         ("SET key2 value2", "+OK\r\n"),
         ("GET key1", "$6\r\nvalue1\r\n"),
         ("GET key2", "$6\r\nvalue2\r\n"),
-        ("MGET key1 key2 nonexistent", "*3\r\n$6\r\nvalue1\r\n$6\r\nvalue2\r\n$-1\r\n"),
+        (
+            "MGET key1 key2 nonexistent",
+            "*3\r\n$6\r\nvalue1\r\n$6\r\nvalue2\r\n$-1\r\n",
+        ),
     ];
 
     for (cmd_str, expected) in commands {
@@ -317,9 +320,7 @@ fn test_ping_variations_integration() {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Test PING without argument
-    let ping_cmd1 = RespValue::Array(vec![
-        RespValue::BulkString(Some("PING".to_string())),
-    ]);
+    let ping_cmd1 = RespValue::Array(vec![RespValue::BulkString(Some("PING".to_string()))]);
 
     if let Some(cmd) = Command::parse(&ping_cmd1) {
         let result = rt.block_on(cmd.execute(&db));
@@ -467,11 +468,14 @@ fn test_invalid_commands_integration() {
         RespValue::Array(vec![RespValue::BulkString(Some("INVALID".to_string()))]), // Unknown command
         RespValue::Array(vec![RespValue::BulkString(Some("SET".to_string()))]), // Missing arguments
         RespValue::Array(vec![RespValue::BulkString(Some("GET".to_string()))]), // Missing key
-        RespValue::BulkString(Some("NOT_AN_ARRAY".to_string())), // Not an array
+        RespValue::BulkString(Some("NOT_AN_ARRAY".to_string())),                // Not an array
     ];
 
     for invalid_cmd in invalid_cmds {
-        assert!(Command::parse(&invalid_cmd).is_none(), "Expected command to be invalid");
+        assert!(
+            Command::parse(&invalid_cmd).is_none(),
+            "Expected command to be invalid"
+        );
     }
 }
 
@@ -487,19 +491,19 @@ fn test_complex_sequence_integration() {
         ("APPEND str_key _world", ":11\r\n"),
         ("GET str_key", "$11\r\nhello_world\r\n"),
         ("STRLEN str_key", ":11\r\n"),
-
         // Numeric operations
         ("INCR counter", ":1\r\n"),
         ("INCRBY counter 5", ":6\r\n"),
         ("DECRBY counter 2", ":4\r\n"),
-
         // Hash operations
         ("HSET user name Alice", ":1\r\n"),
         ("HSET user age 30", ":1\r\n"),
         ("HGET user name", "$5\r\nAlice\r\n"),
-
         // Mixed operations
-        ("MGET str_key counter nonexistent", "*3\r\n$11\r\nhello_world\r\n$1\r\n4\r\n$-1\r\n"),
+        (
+            "MGET str_key counter nonexistent",
+            "*3\r\n$11\r\nhello_world\r\n$1\r\n4\r\n$-1\r\n",
+        ),
     ];
 
     for (cmd_str, expected) in commands {

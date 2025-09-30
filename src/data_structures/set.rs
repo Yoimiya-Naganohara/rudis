@@ -8,7 +8,9 @@ pub struct RedisSet {
 
 impl RedisSet {
     pub fn new() -> Self {
-        RedisSet { members: HashSet::new() }
+        RedisSet {
+            members: HashSet::new(),
+        }
     }
 
     pub fn sadd(&mut self, member: String) -> bool {
@@ -22,7 +24,7 @@ impl RedisSet {
     pub fn sismember(&self, member: &str) -> bool {
         self.members.contains(member)
     }
-    pub fn smembers(&self)->Vec<&String>{
+    pub fn smembers(&self) -> Vec<&String> {
         self.members.iter().collect()
     }
 

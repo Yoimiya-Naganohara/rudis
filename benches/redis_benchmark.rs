@@ -2,12 +2,12 @@
 // Tests performance of various Redis operations
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rudis::database::Database;
 use rudis::commands::Command;
+use rudis::database::Database;
 use rudis::networking::resp::RespValue;
 
 fn bench_string_operations(c: &mut Criterion) {
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     c.bench_function("string_set", |b| {
@@ -50,7 +50,7 @@ fn bench_string_operations(c: &mut Criterion) {
 }
 
 fn bench_hash_operations(c: &mut Criterion) {
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Setup: create a hash with multiple fields
@@ -100,7 +100,7 @@ fn bench_hash_operations(c: &mut Criterion) {
 
     c.bench_function("hash_hgetall_small", |b| {
         // Test with small hash (10 fields)
-        let small_db = Database::new_shared();
+        let small_db = Database::new_shared(16);
         let small_rt = tokio::runtime::Runtime::new().unwrap();
 
         for i in 0..10 {
@@ -143,7 +143,7 @@ fn bench_hash_operations(c: &mut Criterion) {
 }
 
 fn bench_list_operations(c: &mut Criterion) {
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Setup: create a list with some items
@@ -219,7 +219,7 @@ fn bench_list_operations(c: &mut Criterion) {
 }
 
 fn bench_numeric_operations(c: &mut Criterion) {
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     c.bench_function("numeric_incr", |b| {
@@ -251,7 +251,7 @@ fn bench_numeric_operations(c: &mut Criterion) {
 }
 
 fn bench_bulk_operations(c: &mut Criterion) {
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Setup: create multiple keys
@@ -328,7 +328,7 @@ fn bench_command_parsing(c: &mut Criterion) {
 }
 
 fn stress_test_concurrent_operations(c: &mut Criterion) {
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
 
     c.bench_function("stress_concurrent_sets", |b| {
         b.iter(|| {
@@ -391,7 +391,7 @@ fn stress_test_concurrent_operations(c: &mut Criterion) {
 
 fn stress_test_memory_pressure(c: &mut Criterion) {
     c.bench_function("stress_many_keys", |b| {
-        let db = Database::new_shared();
+        let db = Database::new_shared(16);
         let rt = tokio::runtime::Runtime::new().unwrap();
 
         b.iter(|| {
@@ -411,7 +411,7 @@ fn stress_test_memory_pressure(c: &mut Criterion) {
     });
 
     c.bench_function("stress_large_values", |b| {
-        let db = Database::new_shared();
+        let db = Database::new_shared(16);
         let rt = tokio::runtime::Runtime::new().unwrap();
 
         b.iter(|| {
@@ -433,16 +433,14 @@ fn stress_test_memory_pressure(c: &mut Criterion) {
 }
 
 fn stress_test_error_conditions(c: &mut Criterion) {
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     c.bench_function("stress_invalid_commands", |b| {
         b.iter(|| {
             // Test various invalid commands
             let invalid_cmds = vec![
-                RespValue::Array(vec![
-                    RespValue::BulkString(Some("INVALID".to_string())),
-                ]),
+                RespValue::Array(vec![RespValue::BulkString(Some("INVALID".to_string()))]),
                 RespValue::Array(vec![
                     RespValue::BulkString(Some("GET".to_string())),
                     // Missing key
@@ -493,7 +491,7 @@ fn stress_test_error_conditions(c: &mut Criterion) {
 }
 
 fn stress_test_numeric_operations(c: &mut Criterion) {
-    let db = Database::new_shared();
+    let db = Database::new_shared(16);
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     c.bench_function("stress_numeric_overflow", |b| {

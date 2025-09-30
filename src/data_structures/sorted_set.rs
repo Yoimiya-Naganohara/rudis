@@ -38,7 +38,8 @@ impl RedisSortedSet {
         let score = Score(score);
         // Remove old entry if exists
         if let Some(old_score) = self.members.get(&member) {
-            self.ordered_members.remove(&(old_score.clone(), member.clone()));
+            self.ordered_members
+                .remove(&(old_score.clone(), member.clone()));
         }
         self.members.insert(member.clone(), score.clone());
         self.ordered_members.insert((score, member));
@@ -73,13 +74,23 @@ impl RedisSortedSet {
         if start < 0 || stop < start || start >= len {
             vec![]
         } else {
-            sorted.into_iter().skip(start as usize).take((stop - start + 1) as usize).collect()
+            sorted
+                .into_iter()
+                .skip(start as usize)
+                .take((stop - start + 1) as usize)
+                .collect()
         }
     }
 
     pub fn zrange_by_score(&self, min: f64, max: f64) -> Vec<&String> {
         let min_score = Score(min);
         let max_score = Score(max);
-        self.ordered_members.range((std::ops::Bound::Included((min_score, "".to_string())), std::ops::Bound::Included((max_score, "\u{10FFFF}".to_string())))).map(|(_, m)| m).collect()
+        self.ordered_members
+            .range((
+                std::ops::Bound::Included((min_score, "".to_string())),
+                std::ops::Bound::Included((max_score, "\u{10FFFF}".to_string())),
+            ))
+            .map(|(_, m)| m)
+            .collect()
     }
 }

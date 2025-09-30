@@ -67,7 +67,11 @@ impl RedisList {
             self.items.clear();
         } else {
             // Keep only start_idx..end_idx
-            let new_items = self.items.range(start_idx..end_idx).cloned().collect::<VecDeque<_>>();
+            let new_items = self
+                .items
+                .range(start_idx..end_idx)
+                .cloned()
+                .collect::<VecDeque<_>>();
             self.items = new_items;
         }
     }
@@ -83,7 +87,12 @@ impl RedisList {
         }
     }
 
-    pub(crate) fn insert(&mut self, ord: &str, pivot: &str, value: String) -> Result<i64, crate::commands::CommandError> {
+    pub(crate) fn insert(
+        &mut self,
+        ord: &str,
+        pivot: &str,
+        value: String,
+    ) -> Result<i64, crate::commands::CommandError> {
         if let Some(idx) = self.items.iter().position(|x| x == pivot) {
             match ord {
                 "BEFORE" => {

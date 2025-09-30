@@ -34,8 +34,9 @@ impl Server {
     }
 
     pub async fn run(&self) -> Result<()> {
-        loop {
-            self.networking.listen(&self.database).await?;
-        }
+        // loop {
+        self.networking.listen(&self.database).await?;
+        // }
+        Ok(())
     }
 }

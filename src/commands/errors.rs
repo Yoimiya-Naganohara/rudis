@@ -1,5 +1,3 @@
-use thiserror::Error;
-
 pub type Result<T> = std::result::Result<T, CommandError>;
 
 #[derive(Debug, PartialEq, thiserror::Error)]

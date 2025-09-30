@@ -1,7 +1,7 @@
 // Test for HVALS functionality
 
-use rudis::database::{Database, HashOp, StringOp};
 use rudis::commands::CommandError;
+use rudis::database::{Database, HashOp, StringOp};
 
 #[test]
 fn test_hvals_functionality() {
@@ -37,7 +37,7 @@ fn test_hvals_functionality() {
     // Test HVALS vs HGETALL difference
     let getall_result = db.hget_all("user:1").unwrap();
     assert_eq!(getall_result.len(), 6); // Should have 6 items (3 keys + 3 values)
-    assert_eq!(values_result.len(), 3);   // Should have 3 items (only values)
+    assert_eq!(values_result.len(), 3); // Should have 3 items (only values)
 }
 
 #[test]
