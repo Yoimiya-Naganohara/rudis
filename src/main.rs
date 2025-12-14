@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
 
-    info!("🚀 Starting Rudis - A Redis-like server in Rust");
+    info!("Starting Rudis - A Redis-like server in Rust");
 
     // Load configuration
     let config = Config::default();
@@ -25,13 +25,13 @@ async fn main() -> Result<()> {
     // Initialize and start the server
     let server = Server::new(config).await?;
     info!(
-        "📡 Server listening on {}:{}",
+        "Server listening on {}:{}",
         server.config().host,
         server.config().port
     );
 
     if let Err(e) = server.run().await {
-        error!("❌ Server error: {}", e);
+        error!("Server error: {}", e);
         process::exit(1);
     }
 
