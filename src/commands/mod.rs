@@ -75,7 +75,7 @@ pub enum Command {
     // Key Commands
     Exists(Vec<String>),    // EXISTS key [key ...] - Check if keys exist
     Expire(String, String), // EXPIRE key seconds - Set key expiration time
-    TTL(String),            // TTL key - Get remaining time to live of key
+    Ttl(String),            // TTL key - Get remaining time to live of key
     Type(String),           // TYPE key - Get type of key
     Keys(String),           // KEYS pattern - Find keys matching pattern
     FlushAll,               // FLUSHALL - Remove all keys from all databases
@@ -223,7 +223,7 @@ impl Command {
                     "ZRANK" => parse_command!(key_value, elements, ZRank),
                     "EXISTS" => parse_command!(keys, elements, Exists),
                     "EXPIRE" => parse_command!(key_value, elements, Expire),
-                    "TTL" => parse_command!(single_key, elements, TTL),
+                    "TTL" => parse_command!(single_key, elements, Ttl),
                     "TYPE" => parse_command!(single_key, elements, Type),
                     "KEYS" => parse_command!(single_key, elements, Keys),
                     "FLUSHALL" => parse_command!(none, elements, FlushAll),
@@ -456,7 +456,7 @@ impl Command {
                 Ok(()) => command_helper::format_simple_string("OK"),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::TTL(key) => command_helper::format_integer(db.ttl(key)),
+            Command::Ttl(key) => command_helper::format_integer(db.ttl(key)),
             Command::Type(key) => {
                 // TODO: implement type checking
                 command_helper::format_simple_string(db.data_type(key)) // placeholder

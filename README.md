@@ -48,7 +48,7 @@ Rudis implements a subset of Redis commands, including:
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Yoimiya-Naganohara/rudis.git
    cd rudis
    ```
 
@@ -70,13 +70,13 @@ This project uses GitHub Actions for continuous integration and deployment:
 
 - **Automated Testing**: Runs on every push and pull request
 - **Multi-platform Builds**: Builds for Linux, macOS, and Windows
-- **Release Automation**: Automatically creates releases with binaries when tags are pushed
+- **Release Automation**: Automatically creates releases with binaries when version tags are pushed
 
 To create a release:
 1. Update version in `Cargo.toml`
 2. Create a git tag: `git tag v1.0.0`
 3. Push the tag: `git push origin v1.0.0`
-4. GitHub Actions will build and publish the release
+4. GitHub Actions will automatically build and publish the release
 
 ## Usage
 
