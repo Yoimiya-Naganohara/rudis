@@ -2,6 +2,7 @@
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![CI](https://github.com/<username>/<repository>/actions/workflows/ci.yml/badge.svg)](https://github.com/<username>/<repository>/actions/workflows/ci.yml)
 
 Rudis is a high-performance, Redis-compatible server implementation written in Rust. It provides a drop-in replacement for Redis with improved performance, memory efficiency, and safety guarantees through Rust's ownership system.
 
@@ -62,6 +63,20 @@ Rudis implements a subset of Redis commands, including:
    ```
 
 The server will start on the default port (typically 6379).
+
+## CI/CD
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+- **Automated Testing**: Runs on every push and pull request
+- **Multi-platform Builds**: Builds for Linux, macOS, and Windows
+- **Release Automation**: Automatically creates releases with binaries when tags are pushed
+
+To create a release:
+1. Update version in `Cargo.toml`
+2. Create a git tag: `git tag v1.0.0`
+3. Push the tag: `git push origin v1.0.0`
+4. GitHub Actions will build and publish the release
 
 ## Usage
 

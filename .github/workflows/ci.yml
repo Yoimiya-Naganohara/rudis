@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [ published ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --verbose
+
+      - name: Run clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: macos-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rudis-${{ matrix.name }}
+          path: target/${{ matrix.target }}/release/rudis${{ matrix.os == 'windows-latest' && '.exe' || '' }}
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    needs: [test, build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Linux build
+        uses: actions/download-artifact@v4
+        with:
+          name: rudis-linux-x64
+
+      - name: Download macOS build
+        uses: actions/download-artifact@v4
+        with:
+          name: rudis-macos-x64
+
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: rudis-windows-x64
+
+      - name: Create release archives
+        run: |
+          chmod +x rudis
+          tar -czf rudis-linux-x64.tar.gz rudis
+          mv rudis rudis-linux
+          
+          chmod +x rudis-macos-x64/rudis
+          tar -czf rudis-macos-x64.tar.gz -C rudis-macos-x64 rudis
+          
+          zip rudis-windows-x64.zip rudis-windows-x64/rudis.exe
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            rudis-linux-x64.tar.gz
+            rudis-macos-x64.tar.gz
+            rudis-windows-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
