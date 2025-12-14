@@ -64,20 +64,6 @@ Rudis implements a subset of Redis commands, including:
 
 The server will start on the default port (typically 6379).
 
-## CI/CD
-
-This project uses GitHub Actions for continuous integration and deployment:
-
-- **Automated Testing**: Runs on every push and pull request
-- **Multi-platform Builds**: Builds for Linux, macOS, and Windows
-- **Release Automation**: Automatically creates releases with binaries when version tags are pushed
-
-To create a release:
-1. Update version in `Cargo.toml`
-2. Create a git tag: `git tag v1.0.0`
-3. Push the tag: `git push origin v1.0.0`
-4. GitHub Actions will automatically build and publish the release
-
 ## Usage
 
 ### Basic Commands
