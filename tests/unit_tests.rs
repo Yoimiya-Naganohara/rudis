@@ -106,7 +106,7 @@ fn test_database_operations() {
 
     // Test string operations
     db.set("key1", "value1".to_string());
-    assert_eq!(db.get("key1"), Some("value1"));
+    assert_eq!(db.get("key1"), Some("value1".to_string()));
     assert_eq!(db.get("nonexistent"), None);
 
     // Test del
@@ -133,7 +133,7 @@ fn test_database_operations() {
 
     assert_eq!(db.append("append_key", " world"), 11);
     assert_eq!(db.str_len("append_key"), 11);
-    assert_eq!(db.get("append_key"), Some("hello world"));
+    assert_eq!(db.get("append_key"), Some("hello world".to_string()));
 
     assert_eq!(db.str_len("nonexistent"), 0);
 }
@@ -150,8 +150,8 @@ fn test_database_hash_operations() {
     assert_eq!(db.hset("user", "name", "Bob"), Ok(0));
 
     // Test hget
-    assert_eq!(db.hget("user", "name"), Ok(Some(&"Bob".to_string())));
-    assert_eq!(db.hget("user", "age"), Ok(Some(&"25".to_string())));
+    assert_eq!(db.hget("user", "name"), Ok(Some("Bob".to_string())));
+    assert_eq!(db.hget("user", "age"), Ok(Some("25".to_string())));
     assert_eq!(db.hget("user", "nonexistent"), Ok(None));
     assert_eq!(db.hget("nonexistent_hash", "field"), Ok(None));
 
@@ -202,7 +202,7 @@ fn test_database_edge_cases() {
 
     // Test operations on empty keys
     db.set("", "empty_key".to_string());
-    assert_eq!(db.get(""), Some("empty_key"));
+    assert_eq!(db.get(""), Some("empty_key".to_string()));
 
     // Test large numbers
     assert_eq!(db.incr_by("big_num", "999999999999"), Ok(999999999999));
@@ -216,7 +216,7 @@ fn test_database_edge_cases() {
 
     // Test hash with empty field names
     assert_eq!(db.hset("hash", "", "empty_field"), Ok(1));
-    assert_eq!(db.hget("hash", ""), Ok(Some(&"empty_field".to_string())));
+    assert_eq!(db.hget("hash", ""), Ok(Some("empty_field".to_string())));
 }
 
 #[test]

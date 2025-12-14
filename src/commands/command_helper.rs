@@ -208,9 +208,9 @@ pub fn format_simple_string(value: &str) -> String {
     format!("+{}\r\n", value)
 }
 
-pub fn format_hash_response(value: Vec<&String>) -> String {
+pub fn format_hash_response(value: Vec<String>) -> String {
     let mut result = format!("*{}\r\n", value.len());
-    for item in value {
+    for item in &value {
         result.push_str(&format!("${}\r\n{}\r\n", item.len(), item));
     }
     result

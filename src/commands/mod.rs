@@ -11,7 +11,6 @@ use crate::{
 };
 mod errors;
 pub use errors::*;
-use serde_json::value;
 #[derive(Debug, PartialEq)]
 pub enum Command {
     // Connection Commands
@@ -244,19 +243,18 @@ impl Command {
     }
 
     pub async fn execute(&self, db: &SharedDatabase) -> String {
-        let mut db_guard = db.lock().await;
         match self {
             Command::Ping(None) => command_helper::format_simple_string("PONG"),
             Command::Ping(Some(msg)) => command_helper::format_simple_string(msg),
             Command::Quit => "#QUIT".to_owned(),
-            Command::Get(key) => match db_guard.get(key) {
-                Some(value) => command_helper::format_bulk_string(value),
+            Command::Get(key) => match db.get(key) {
+                Some(value) => command_helper::format_bulk_string(&value),
                 None => command_helper::format_null(),
             },
             Command::Set(key, value, options) => {
                 let mut should_set = true;
                 if let Some(opts) = &options {
-                    let exists = db_guard.get(&key).is_some();
+                    let exists = db.get(&key).is_some();
                     if opts.nx && exists {
                         should_set = false;
                     }
@@ -265,13 +263,13 @@ impl Command {
                     }
                 }
                 if should_set {
-                    db_guard.set(&key, value.clone());
+                    db.set(&key, value.clone());
                     if let Some(opts) = &options {
                         if let Some(ex) = opts.ex {
-                            let _ = db_guard.expire(&key, &ex.to_string());
+                            let _ = db.expire(&key, &ex.to_string());
                         } else if let Some(px) = opts.px {
                             let secs = (px as f64 / 1000.0).ceil() as u64;
-                            let _ = db_guard.expire(&key, &secs.to_string());
+                            let _ = db.expire(&key, &secs.to_string());
                         }
                         // KEEPTTL does nothing, TTL is kept
                     }
@@ -280,30 +278,30 @@ impl Command {
                     command_helper::format_null()
                 }
             }
-            Command::Del(keys) => command_helper::format_integer(db_guard.del(keys) as i64),
-            Command::Incr(key) => match db_guard.incr(key) {
+            Command::Del(keys) => command_helper::format_integer(db.del(keys) as i64),
+            Command::Incr(key) => match db.incr(key) {
                 Ok(value) => command_helper::format_integer(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::Decr(key) => match db_guard.decr(key) {
+            Command::Decr(key) => match db.decr(key) {
                 Ok(value) => command_helper::format_integer(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::IncrBy(key, value) => match db_guard.incr_by(key, value) {
+            Command::IncrBy(key, value) => match db.incr_by(key, value) {
                 Ok(value) => command_helper::format_integer(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::DecrBy(key, value) => match db_guard.decr_by(key, value) {
+            Command::DecrBy(key, value) => match db.decr_by(key, value) {
                 Ok(value) => command_helper::format_integer(value),
                 Err(e) => command_helper::format_error(e),
             },
             Command::Append(key, value) => {
-                command_helper::format_integer(db_guard.append(key, value) as i64)
+                command_helper::format_integer(db.append(key, value) as i64)
             }
-            Command::Strlen(key) => command_helper::format_integer(db_guard.str_len(key) as i64),
+            Command::Strlen(key) => command_helper::format_integer(db.str_len(key) as i64),
             Command::MGet(keys) => command_helper::format_array(
                 keys.iter()
-                    .map(|key| match db_guard.get(key) {
+                    .map(|key| match db.get(key) {
                         Some(value) => format!("${}\r\n{}\r\n", value.len(), value),
                         None => "$-1\r\n".to_string(),
                     })
@@ -312,127 +310,121 @@ impl Command {
             Command::MSet(key_values) => {
                 key_values
                     .iter()
-                    .for_each(|(key, value)| db_guard.set(key, value.clone()));
+                    .for_each(|(key, value)| db.set(key, value.clone()));
                 command_helper::format_simple_string("OK")
             }
-            Command::HSet(hash, field, value) => match db_guard.hset(hash, field, value) {
+            Command::HSet(hash, field, value) => match db.hset(hash, field, value) {
                 Ok(result) => command_helper::format_integer(result),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::HGet(hash, field) => match db_guard.hget(hash, field) {
-                Ok(Some(result)) => command_helper::format_bulk_string(result),
+            Command::HGet(hash, field) => match db.hget(hash, field) {
+                Ok(Some(result)) => command_helper::format_bulk_string(&result),
                 Ok(None) => command_helper::format_null(),
                 Err(e) => command_helper::format_error(e),
             },
             Command::HDel(hash, fields) => {
-                command_helper::format_integer(db_guard.hdel_multiple(hash, &fields) as i64)
+                command_helper::format_integer(db.hdel_multiple(hash, &fields) as i64)
             }
-            Command::HGetAll(key) => match db_guard.hget_all(key) {
+            Command::HGetAll(key) => match db.hget_all(key) {
                 Ok(value) => command_helper::format_hash_response(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::HKeys(key) => match db_guard.hkeys(key) {
+            Command::HKeys(key) => match db.hkeys(key) {
                 Ok(value) => command_helper::format_hash_response(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::HVals(key) => match db_guard.hvals(key) {
+            Command::HVals(key) => match db.hvals(key) {
                 Ok(value) => command_helper::format_hash_response(value),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::HLen(key) => match db_guard.hlen(key) {
+            Command::HLen(key) => match db.hlen(key) {
                 Ok(value) => command_helper::format_integer(value as i64),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::HExists(hash, field) => match db_guard.hexists(hash, field) {
+            Command::HExists(hash, field) => match db.hexists(hash, field) {
                 Ok(value) => command_helper::format_integer(if value { 1 } else { 0 }),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::HIncrBy(hash, field, value) => match db_guard.hincrby(hash, field, &value) {
+            Command::HIncrBy(hash, field, value) => match db.hincrby(hash, field, &value) {
                 Ok(result) => command_helper::format_integer(result),
                 Err(e) => command_helper::format_error(e),
             },
             Command::HIncrByFloat(hash, field, value) => {
-                match db_guard.hincrbyfloat(hash, field, &value) {
+                match db.hincrbyfloat(hash, field, &value) {
                     Ok(result) => command_helper::format_bulk_string(&result.to_string()),
                     Err(e) => command_helper::format_error(e),
                 }
             }
             Command::LPush(key, value) => {
-                db_guard.lpush(key, value);
+                db.lpush(key, value);
                 format_simple_string("OK")
             }
             Command::RPush(key, value) => {
-                db_guard.rpush(key, value);
+                db.rpush(key, value);
                 format_simple_string("OK")
             }
-            Command::LPop(key) => match db_guard.lpop(key) {
+            Command::LPop(key) => match db.lpop(key) {
                 Some(result) => format_simple_string(&result),
                 None => format_null(),
             },
-            Command::RPop(key) => match db_guard.rpop(key) {
+            Command::RPop(key) => match db.rpop(key) {
                 Some(result) => format_simple_string(&result),
                 None => format_null(),
             },
-            Command::LLen(key) => format_integer(db_guard.llen(key) as i64),
-            Command::LIndex(key, index) => match db_guard.lindex(key, index) {
-                Some(val) => format_simple_string(val),
+            Command::LLen(key) => format_integer(db.llen(key) as i64),
+            Command::LIndex(key, index) => match db.lindex(key, index) {
+                Some(val) => format_simple_string(&val),
                 None => format_null(),
             },
-            Command::LRange(key, start, end) => match db_guard.lrange(key, start, end) {
+            Command::LRange(key, start, end) => match db.lrange(key, start, end) {
                 Ok(val) => format_array(val.iter().map(|v| format_bulk_string(v)).collect()),
                 Err(e) => format_error(e),
             },
-            Command::LTrim(key, start, end) => match db_guard.ltrim(key, start, end) {
+            Command::LTrim(key, start, end) => match db.ltrim(key, start, end) {
                 Ok(val) => format_simple_string("OK"),
                 Err(e) => format_error(e),
             },
-            Command::LSet(key, index, value) => {
-                match db_guard.lset(key, index, value.to_string()) {
-                    Ok(val) => format_simple_string("OK"),
-                    Err(e) => format_error(e),
-                }
-            }
+            Command::LSet(key, index, value) => match db.lset(key, index, value.to_string()) {
+                Ok(val) => format_simple_string("OK"),
+                Err(e) => format_error(e),
+            },
             Command::LInsert(key, ord, pivot, value) => {
-                match db_guard.linsert(key, ord, pivot, value.to_string()) {
+                match db.linsert(key, ord, pivot, value.to_string()) {
                     Ok(val) => format_integer(val),
                     Err(e) => format_error(e),
                 }
             }
-            Command::SAdd(key, values) => format_integer(db_guard.sadd(key, values) as i64),
-            Command::SRem(key, values) => format_integer(db_guard.srem(key, values) as i64),
-            Command::SMembers(key) => {
-                (match db_guard.smembers(key) {
-                    Ok(value) => {
-                        format_array(value.iter().map(|v| format_bulk_string(v)).collect())
-                    }
-                    Err(e) => format_error(e),
-                })
-            }
-            Command::SCard(key) => format_integer(db_guard.scard(key) as i64),
-            Command::SIsMember(key, member) => {
-                format_integer(db_guard.sismember(key, member) as i64)
-            }
-            Command::SInter(items) => match db_guard.sinter(items) {
+            Command::SAdd(key, values) => format_integer(db.sadd(key, values) as i64),
+            Command::SRem(key, values) => format_integer(db.srem(key, values) as i64),
+            Command::SMembers(key) => match db.smembers(key) {
+                Ok(value) => {
+                    format_array(value.iter().map(|v| format_bulk_string(v)).collect())
+                }
+                Err(e) => format_error(e),
+            },
+            Command::SCard(key) => format_integer(db.scard(key) as i64),
+            Command::SIsMember(key, member) => format_integer(db.sismember(key, member) as i64),
+            Command::SInter(items) => match db.sinter(items) {
                 Ok(res) => format_array(res.iter().map(|v| format_bulk_string(v)).collect()),
                 Err(e) => format_error(e),
             },
-            Command::SUnion(items) => match db_guard.sunion(items) {
+            Command::SUnion(items) => match db.sunion(items) {
                 Ok(res) => format_array(res.iter().map(|v| format_bulk_string(v)).collect()),
                 Err(e) => format_error(e),
             },
-            Command::SDiff(items) => match db_guard.sdiff(items) {
+            Command::SDiff(items) => match db.sdiff(items) {
                 Ok(res) => format_array(res.iter().map(|v| format_bulk_string(v)).collect()),
                 Err(e) => format_error(e),
             },
             Command::ZAdd(key, pairs) => {
-                let added = db_guard.zadd(key, pairs);
+                let added = db.zadd(key, pairs);
                 command_helper::format_integer(added as i64)
             }
             Command::ZRem(key, members) => {
-                let removed = db_guard.zrem(key, members);
+                let removed = db.zrem(key, members);
                 command_helper::format_integer(removed as i64)
             }
-            Command::ZRange(key, start, stop) => match db_guard.zrange(key, start, stop) {
+            Command::ZRange(key, start, stop) => match db.zrange(key, start, stop) {
                 Ok(members) => command_helper::format_array(
                     members
                         .iter()
@@ -441,37 +433,35 @@ impl Command {
                 ),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::ZRangeByScore(key, min, max) => {
-                match db_guard.zrange_by_score(key, min, max) {
-                    Ok(members) => command_helper::format_array(
-                        members
-                            .iter()
-                            .map(|m| command_helper::format_bulk_string(m))
-                            .collect(),
-                    ),
-                    Err(e) => command_helper::format_error(e),
-                }
-            }
-            Command::ZCard(key) => command_helper::format_integer(db_guard.zcard(key) as i64),
-            Command::ZScore(key, member) => match db_guard.zscore(key, member) {
+            Command::ZRangeByScore(key, min, max) => match db.zrange_by_score(key, min, max) {
+                Ok(members) => command_helper::format_array(
+                    members
+                        .iter()
+                        .map(|m| command_helper::format_bulk_string(m))
+                        .collect(),
+                ),
+                Err(e) => command_helper::format_error(e),
+            },
+            Command::ZCard(key) => command_helper::format_integer(db.zcard(key) as i64),
+            Command::ZScore(key, member) => match db.zscore(key, member) {
                 Some(score) => command_helper::format_bulk_string(&score.to_string()),
                 None => command_helper::format_null(),
             },
-            Command::ZRank(key, member) => match db_guard.zrank(key, member) {
+            Command::ZRank(key, member) => match db.zrank(key, member) {
                 Some(rank) => command_helper::format_integer(rank as i64),
                 None => command_helper::format_null(),
             },
-            Command::Exists(keys) => command_helper::format_integer(db_guard.exist(keys) as i64),
-            Command::Expire(key, seconds) => match db_guard.expire(key, seconds) {
+            Command::Exists(keys) => command_helper::format_integer(db.exist(keys) as i64),
+            Command::Expire(key, seconds) => match db.expire(key, seconds) {
                 Ok(()) => command_helper::format_simple_string("OK"),
                 Err(e) => command_helper::format_error(e),
             },
-            Command::TTL(key) => command_helper::format_integer(db_guard.ttl(key)),
+            Command::TTL(key) => command_helper::format_integer(db.ttl(key)),
             Command::Type(key) => {
                 // TODO: implement type checking
-                command_helper::format_simple_string("string") // placeholder
+                command_helper::format_simple_string(db.data_type(key)) // placeholder
             }
-            Command::Keys(pattern) => match db_guard.keys(pattern) {
+            Command::Keys(pattern) => match db.keys(pattern) {
                 Ok(keys) => command_helper::format_array(
                     keys.iter()
                         .map(|k| command_helper::format_bulk_string(k))
@@ -480,18 +470,18 @@ impl Command {
                 Err(e) => command_helper::format_error(e),
             },
             Command::FlushAll => {
-                db_guard.flush_all();
+                db.flush_all();
                 command_helper::format_simple_string("OK")
             }
             Command::FlushDB => {
-                db_guard.flush_db();
+                db.flush_db();
                 command_helper::format_simple_string("OK")
             }
             Command::Echo(msg) => command_helper::format_bulk_string(msg),
             Command::Auth(_) => command_helper::format_simple_string("OK"),
             Command::Select(db_index) => match db_index.parse::<u8>() {
                 Ok(db_num) if db_num <= 15 => {
-                    db_guard.select(db_num);
+                    db.select(db_num);
                     command_helper::format_simple_string("OK")
                 }
                 _ => command_helper::format_error("ERR invalid DB index"),
@@ -500,23 +490,23 @@ impl Command {
                 command_helper::format_bulk_string("# Server\r\nredis_version:6.0.0\r\n")
             }
             Command::SetNX(key, value) => {
-                if db_guard.get(key).is_none() {
-                    db_guard.set(key, value.clone());
+                if db.get(key).is_none() {
+                    db.set(key, value.clone());
                     command_helper::format_integer(1)
                 } else {
                     command_helper::format_integer(0)
                 }
             }
             Command::SetEX(key, seconds, value) => {
-                db_guard.set(key, value.clone());
-                match db_guard.expire(key, seconds) {
+                db.set(key, value.clone());
+                match db.expire(key, seconds) {
                     Ok(()) => command_helper::format_simple_string("OK"),
                     Err(e) => command_helper::format_error(e),
                 }
             }
             Command::GetSet(key, value) => {
-                let old = db_guard.get(key).map(|s| s.to_string());
-                db_guard.set(key, value.clone());
+                let old = db.get(key).map(|s| s.to_string());
+                db.set(key, value.clone());
                 match old {
                     Some(val) => command_helper::format_bulk_string(&val),
                     None => command_helper::format_null(),

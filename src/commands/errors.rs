@@ -72,6 +72,14 @@ pub enum CommandError {
     #[error("ERR member not found in sorted set")]
     SortedSetMemberNotFound,
 
+    // Pattern matching error
+    #[error("ERR invalid pattern")]
+    InvalidPattern,
+
+    // Not implemented error
+    #[error("ERR command not implemented")]
+    NotImplemented,
+
     // Generic error with custom message
     #[error("ERR {0}")]
     Custom(String),
