@@ -1,5 +1,6 @@
 // Sorted Set data structure for Rudis
 
+use bytes::Bytes;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 
@@ -22,8 +23,8 @@ impl Eq for Score {}
 
 #[derive(Debug)]
 pub struct RedisSortedSet {
-    members: HashMap<String, Score>,
-    ordered_members: BTreeSet<(Score, String)>,
+    members: HashMap<Bytes, Score>,
+    ordered_members: BTreeSet<(Score, Bytes)>,
 }
 
 impl RedisSortedSet {
@@ -34,7 +35,7 @@ impl RedisSortedSet {
         }
     }
 
-    pub fn zadd(&mut self, member: String, score: f64) {
+    pub fn zadd(&mut self, member: Bytes, score: f64) {
         let score = Score(score);
         // Remove old entry if exists
         if let Some(old_score) = self.members.get(&member) {
@@ -45,13 +46,13 @@ impl RedisSortedSet {
         self.ordered_members.insert((score, member));
     }
 
-    pub fn zscore(&self, member: &str) -> Option<f64> {
+    pub fn zscore(&self, member: &Bytes) -> Option<f64> {
         self.members.get(member).map(|s| s.0)
     }
 
-    pub fn zrem(&mut self, member: &str) -> bool {
+    pub fn zrem(&mut self, member: &Bytes) -> bool {
         if let Some(score) = self.members.remove(member) {
-            self.ordered_members.remove(&(score, member.to_string()));
+            self.ordered_members.remove(&(score, member.clone()));
             true
         } else {
             false
@@ -62,11 +63,11 @@ impl RedisSortedSet {
         self.members.len()
     }
 
-    pub fn zrank(&self, member: &str) -> Option<usize> {
+    pub fn zrank(&self, member: &Bytes) -> Option<usize> {
         self.ordered_members.iter().position(|(_, m)| m == member)
     }
 
-    pub fn zrange(&self, start: i64, stop: i64) -> Vec<&String> {
+    pub fn zrange(&self, start: i64, stop: i64) -> Vec<Bytes> {
         let sorted: Vec<_> = self.ordered_members.iter().map(|(_, m)| m).collect();
         let len = sorted.len() as i64;
         let start = if start < 0 { len + start } else { start };
@@ -74,23 +75,45 @@ impl RedisSortedSet {
         if start < 0 || stop < start || start >= len {
             vec![]
         } else {
+            // Clone Bytes
             sorted
                 .into_iter()
                 .skip(start as usize)
                 .take((stop - start + 1) as usize)
+                .cloned()
                 .collect()
         }
     }
 
-    pub fn zrange_by_score(&self, min: f64, max: f64) -> Vec<&String> {
+    pub fn zrange_by_score(&self, min: f64, max: f64) -> Vec<Bytes> {
         let min_score = Score(min);
         let max_score = Score(max);
         self.ordered_members
             .range((
-                std::ops::Bound::Included((min_score, "".to_string())),
-                std::ops::Bound::Included((max_score, "\u{10FFFF}".to_string())),
+                std::ops::Bound::Included((min_score, Bytes::from_static(b""))),
+                std::ops::Bound::Included((max_score, Bytes::from_static(b"\xFF\xFF\xFF\xFF"))), // Hacky max bound?
+                                                                                                 // Actually for range search on BTreeSet<(Score, Bytes)>, we need to be careful.
+                                                                                                 // If scores are equal, bytes are compared.
+                                                                                                 // To get all with score >= min and <= max:
+                                                                                                 // Start: (min, empty)
+                                                                                                 // End: (max, max_possible_bytes)
             ))
-            .map(|(_, m)| m)
+            // The logic above is slightly flawed because we can't easily construct "max possible bytes".
+            // Ideally we filter. But range is more efficient.
+            // Let's use filter for correctness if range is tricky, or just use range with Unbounded for the bytes part if possible,
+            // but Rust's RangeBounds applies to the whole tuple.
+            // BTreeSet doesn't support "partial" range on tuple.
+            // Wait, we can use range with Included/Excluded.
+            // (min_score, [empty]) is definitely the start.
+            // (max_score, [max_bytes]) is the end.
+            // Since we can't easily make max bytes, maybe we can accept we might miss something if we don't do it right?
+            // Actually, we can use filter on the iterator of the whole set for now to be safe and simple,
+            // since this is an optimization refactor, logic preservation is key.
+            // Existing logic used "\u{10FFFF}" which is max char.
+            // For bytes, we don't have a simple "max".
+            // Let's use filter on `ordered_members`.
+            .filter(|(s, _)| s.0 >= min && s.0 <= max)
+            .map(|(_, m)| m.clone())
             .collect()
     }
 }

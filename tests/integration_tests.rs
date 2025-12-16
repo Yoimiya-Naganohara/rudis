@@ -1,6 +1,7 @@
 // Integration tests for Rudis
 // Tests the full server functionality with command parsing and execution
 
+use bytes::Bytes;
 use rudis::commands::Command;
 use rudis::database::Database;
 use rudis::networking::resp::RespValue;
@@ -12,14 +13,15 @@ fn test_command_parsing_and_execution_integration() {
 
     // Test SET command
     let set_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("SET".to_string())),
-        RespValue::BulkString(Some("integration_key".to_string())),
-        RespValue::BulkString(Some("integration_value".to_string())),
+        RespValue::BulkString(Bytes::from("SET".to_string())),
+        RespValue::BulkString(Bytes::from("integration_key".to_string())),
+        RespValue::BulkString(Bytes::from("integration_value".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&set_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, "+OK\r\n");
     } else {
         panic!("Failed to parse SET command");
@@ -27,13 +29,14 @@ fn test_command_parsing_and_execution_integration() {
 
     // Test GET command
     let get_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("GET".to_string())),
-        RespValue::BulkString(Some("integration_key".to_string())),
+        RespValue::BulkString(Bytes::from("GET".to_string())),
+        RespValue::BulkString(Bytes::from("integration_key".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&get_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, "$17\r\nintegration_value\r\n");
     } else {
         panic!("Failed to parse GET command");
@@ -47,40 +50,43 @@ fn test_hash_operations_integration() {
 
     // Test HSET
     let hset_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("HSET".to_string())),
-        RespValue::BulkString(Some("user".to_string())),
-        RespValue::BulkString(Some("name".to_string())),
-        RespValue::BulkString(Some("Alice".to_string())),
+        RespValue::BulkString(Bytes::from("HSET".to_string())),
+        RespValue::BulkString(Bytes::from("user".to_string())),
+        RespValue::BulkString(Bytes::from("name".to_string())),
+        RespValue::BulkString(Bytes::from("Alice".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&hset_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, ":1\r\n");
     }
 
     // Test HGET
     let hget_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("HGET".to_string())),
-        RespValue::BulkString(Some("user".to_string())),
-        RespValue::BulkString(Some("name".to_string())),
+        RespValue::BulkString(Bytes::from("HGET".to_string())),
+        RespValue::BulkString(Bytes::from("user".to_string())),
+        RespValue::BulkString(Bytes::from("name".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&hget_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, "$5\r\nAlice\r\n");
     }
 
     // Test HGETALL
     let hgetall_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("HGETALL".to_string())),
-        RespValue::BulkString(Some("user".to_string())),
+        RespValue::BulkString(Bytes::from("HGETALL".to_string())),
+        RespValue::BulkString(Bytes::from("user".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&hgetall_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert!(result.contains("$4\r\nname\r\n"));
         assert!(result.contains("$5\r\nAlice\r\n"));
     }
@@ -108,12 +114,13 @@ fn test_multiple_operations_integration() {
         let parts: Vec<&str> = cmd_str.split_whitespace().collect();
         let resp_parts: Vec<RespValue> = parts
             .into_iter()
-            .map(|p| RespValue::BulkString(Some(p.to_string())))
+            .map(|p| RespValue::BulkString(Bytes::from(p.to_string())))
             .collect();
         let resp_value = RespValue::Array(resp_parts);
 
         if let Some(cmd) = Command::parse(&resp_value) {
-            let result = rt.block_on(cmd.execute(&db));
+            let result_bytes = rt.block_on(cmd.execute(&db));
+            let result = String::from_utf8_lossy(&result_bytes);
             assert_eq!(result, expected, "Command '{}' failed", cmd_str);
         } else {
             panic!("Failed to parse command: {}", cmd_str);
@@ -129,9 +136,9 @@ fn test_error_handling_integration() {
 
     // Test INCR on non-integer value
     let set_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("SET".to_string())),
-        RespValue::BulkString(Some("text".to_string())),
-        RespValue::BulkString(Some("not_a_number".to_string())),
+        RespValue::BulkString(Bytes::from("SET".to_string())),
+        RespValue::BulkString(Bytes::from("text".to_string())),
+        RespValue::BulkString(Bytes::from("not_a_number".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&set_cmd) {
@@ -139,12 +146,13 @@ fn test_error_handling_integration() {
     }
 
     let incr_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("INCR".to_string())),
-        RespValue::BulkString(Some("text".to_string())),
+        RespValue::BulkString(Bytes::from("INCR".to_string())),
+        RespValue::BulkString(Bytes::from("text".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&incr_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert!(result.contains("-ERR"));
     }
 }
@@ -157,49 +165,53 @@ fn test_numeric_operations_integration() {
 
     // Test INCR on non-existent key
     let incr_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("INCR".to_string())),
-        RespValue::BulkString(Some("counter".to_string())),
+        RespValue::BulkString(Bytes::from("INCR".to_string())),
+        RespValue::BulkString(Bytes::from("counter".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&incr_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, ":1\r\n");
     }
 
     // Test INCR on existing value
     if let Some(cmd) = Command::parse(&incr_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, ":2\r\n");
     }
 
     // Test DECR
     let decr_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("DECR".to_string())),
-        RespValue::BulkString(Some("counter".to_string())),
+        RespValue::BulkString(Bytes::from("DECR".to_string())),
+        RespValue::BulkString(Bytes::from("counter".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&decr_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, ":1\r\n");
     }
 
     // Test INCRBY
     let incrby_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("INCRBY".to_string())),
-        RespValue::BulkString(Some("counter".to_string())),
-        RespValue::BulkString(Some("5".to_string())),
+        RespValue::BulkString(Bytes::from("INCRBY".to_string())),
+        RespValue::BulkString(Bytes::from("counter".to_string())),
+        RespValue::BulkString(Bytes::from("5".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&incrby_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, ":6\r\n");
     }
 
     // Test DECRBY
     let decrby_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("DECRBY".to_string())),
-        RespValue::BulkString(Some("counter".to_string())),
-        RespValue::BulkString(Some("3".to_string())),
+        RespValue::BulkString(Bytes::from("DECRBY".to_string())),
+        RespValue::BulkString(Bytes::from("counter".to_string())),
+        RespValue::BulkString(Bytes::from("3".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&decrby_cmd) {
@@ -216,9 +228,9 @@ fn test_string_operations_integration() {
 
     // Test APPEND on non-existent key
     let append_cmd1 = RespValue::Array(vec![
-        RespValue::BulkString(Some("APPEND".to_string())),
-        RespValue::BulkString(Some("mykey".to_string())),
-        RespValue::BulkString(Some("Hello".to_string())),
+        RespValue::BulkString(Bytes::from("APPEND".to_string())),
+        RespValue::BulkString(Bytes::from("mykey".to_string())),
+        RespValue::BulkString(Bytes::from("Hello".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&append_cmd1) {
@@ -228,9 +240,9 @@ fn test_string_operations_integration() {
 
     // Test APPEND on existing key
     let append_cmd2 = RespValue::Array(vec![
-        RespValue::BulkString(Some("APPEND".to_string())),
-        RespValue::BulkString(Some("mykey".to_string())),
-        RespValue::BulkString(Some(" World".to_string())),
+        RespValue::BulkString(Bytes::from("APPEND".to_string())),
+        RespValue::BulkString(Bytes::from("mykey".to_string())),
+        RespValue::BulkString(Bytes::from(" World".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&append_cmd2) {
@@ -240,8 +252,8 @@ fn test_string_operations_integration() {
 
     // Test STRLEN
     let strlen_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("STRLEN".to_string())),
-        RespValue::BulkString(Some("mykey".to_string())),
+        RespValue::BulkString(Bytes::from("STRLEN".to_string())),
+        RespValue::BulkString(Bytes::from("mykey".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&strlen_cmd) {
@@ -251,8 +263,8 @@ fn test_string_operations_integration() {
 
     // Test STRLEN on non-existent key
     let strlen_cmd2 = RespValue::Array(vec![
-        RespValue::BulkString(Some("STRLEN".to_string())),
-        RespValue::BulkString(Some("nonexistent".to_string())),
+        RespValue::BulkString(Bytes::from("STRLEN".to_string())),
+        RespValue::BulkString(Bytes::from("nonexistent".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&strlen_cmd2) {
@@ -278,22 +290,23 @@ fn test_del_operations_integration() {
         let parts: Vec<&str> = cmd_str.split_whitespace().collect();
         let resp_parts: Vec<RespValue> = parts
             .into_iter()
-            .map(|p| RespValue::BulkString(Some(p.to_string())))
+            .map(|p| RespValue::BulkString(Bytes::from(p.to_string())))
             .collect();
         let resp_value = RespValue::Array(resp_parts);
 
         if let Some(cmd) = Command::parse(&resp_value) {
-            let result = rt.block_on(cmd.execute(&db));
+            let result_bytes = rt.block_on(cmd.execute(&db));
+            let result = String::from_utf8_lossy(&result_bytes);
             assert_eq!(result, expected);
         }
     }
 
     // Test DEL with multiple keys
     let del_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("DEL".to_string())),
-        RespValue::BulkString(Some("key1".to_string())),
-        RespValue::BulkString(Some("key2".to_string())),
-        RespValue::BulkString(Some("nonexistent".to_string())),
+        RespValue::BulkString(Bytes::from("DEL".to_string())),
+        RespValue::BulkString(Bytes::from("key1".to_string())),
+        RespValue::BulkString(Bytes::from("key2".to_string())),
+        RespValue::BulkString(Bytes::from("nonexistent".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&del_cmd) {
@@ -303,8 +316,8 @@ fn test_del_operations_integration() {
 
     // Verify keys are gone
     let get_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("GET".to_string())),
-        RespValue::BulkString(Some("key1".to_string())),
+        RespValue::BulkString(Bytes::from("GET".to_string())),
+        RespValue::BulkString(Bytes::from("key1".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&get_cmd) {
@@ -320,7 +333,7 @@ fn test_ping_variations_integration() {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Test PING without argument
-    let ping_cmd1 = RespValue::Array(vec![RespValue::BulkString(Some("PING".to_string()))]);
+    let ping_cmd1 = RespValue::Array(vec![RespValue::BulkString(Bytes::from("PING".to_string()))]);
 
     if let Some(cmd) = Command::parse(&ping_cmd1) {
         let result = rt.block_on(cmd.execute(&db));
@@ -329,13 +342,13 @@ fn test_ping_variations_integration() {
 
     // Test PING with argument
     let ping_cmd2 = RespValue::Array(vec![
-        RespValue::BulkString(Some("PING".to_string())),
-        RespValue::BulkString(Some("hello world".to_string())),
+        RespValue::BulkString(Bytes::from("PING".to_string())),
+        RespValue::BulkString(Bytes::from("hello world".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&ping_cmd2) {
         let result = rt.block_on(cmd.execute(&db));
-        assert_eq!(result, "+hello world\r\n");
+        assert_eq!(result, "$11\r\nhello world\r\n");
     }
 }
 
@@ -356,24 +369,26 @@ fn test_hash_comprehensive_integration() {
         let parts: Vec<&str> = cmd_str.split_whitespace().collect();
         let resp_parts: Vec<RespValue> = parts
             .into_iter()
-            .map(|p| RespValue::BulkString(Some(p.to_string())))
+            .map(|p| RespValue::BulkString(Bytes::from(p.to_string())))
             .collect();
         let resp_value = RespValue::Array(resp_parts);
 
         if let Some(cmd) = Command::parse(&resp_value) {
-            let result = rt.block_on(cmd.execute(&db));
+            let result_bytes = rt.block_on(cmd.execute(&db));
+            let result = String::from_utf8_lossy(&result_bytes);
             assert_eq!(result, expected);
         }
     }
 
     // Test HGETALL
     let hgetall_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("HGETALL".to_string())),
-        RespValue::BulkString(Some("user".to_string())),
+        RespValue::BulkString(Bytes::from("HGETALL".to_string())),
+        RespValue::BulkString(Bytes::from("user".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&hgetall_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         // Should contain all key-value pairs
         assert!(result.contains("$4\r\nname\r\n"));
         assert!(result.contains("$5\r\nAlice\r\n"));
@@ -385,25 +400,27 @@ fn test_hash_comprehensive_integration() {
 
     // Test HDEL
     let hdel_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("HDEL".to_string())),
-        RespValue::BulkString(Some("user".to_string())),
-        RespValue::BulkString(Some("age".to_string())),
+        RespValue::BulkString(Bytes::from("HDEL".to_string())),
+        RespValue::BulkString(Bytes::from("user".to_string())),
+        RespValue::BulkString(Bytes::from("age".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&hdel_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, ":1\r\n"); // 1 field deleted
     }
 
     // Test HGET on deleted field
     let hget_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("HGET".to_string())),
-        RespValue::BulkString(Some("user".to_string())),
-        RespValue::BulkString(Some("age".to_string())),
+        RespValue::BulkString(Bytes::from("HGET".to_string())),
+        RespValue::BulkString(Bytes::from("user".to_string())),
+        RespValue::BulkString(Bytes::from("age".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&hget_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert_eq!(result, "$-1\r\n"); // Field doesn't exist
     }
 }
@@ -416,9 +433,9 @@ fn test_type_conflicts_integration() {
 
     // Set a string value
     let set_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("SET".to_string())),
-        RespValue::BulkString(Some("mykey".to_string())),
-        RespValue::BulkString(Some("string_value".to_string())),
+        RespValue::BulkString(Bytes::from("SET".to_string())),
+        RespValue::BulkString(Bytes::from("mykey".to_string())),
+        RespValue::BulkString(Bytes::from("string_value".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&set_cmd) {
@@ -427,35 +444,38 @@ fn test_type_conflicts_integration() {
 
     // Try to perform hash operations on string key
     let hget_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("HGET".to_string())),
-        RespValue::BulkString(Some("mykey".to_string())),
-        RespValue::BulkString(Some("field".to_string())),
+        RespValue::BulkString(Bytes::from("HGET".to_string())),
+        RespValue::BulkString(Bytes::from("mykey".to_string())),
+        RespValue::BulkString(Bytes::from("field".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&hget_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert!(result.contains("WRONGTYPE"));
     }
 
     let hset_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("HSET".to_string())),
-        RespValue::BulkString(Some("mykey".to_string())),
-        RespValue::BulkString(Some("field".to_string())),
-        RespValue::BulkString(Some("value".to_string())),
+        RespValue::BulkString(Bytes::from("HSET".to_string())),
+        RespValue::BulkString(Bytes::from("mykey".to_string())),
+        RespValue::BulkString(Bytes::from("field".to_string())),
+        RespValue::BulkString(Bytes::from("value".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&hset_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert!(result.contains("WRONGTYPE"));
     }
 
     let hgetall_cmd = RespValue::Array(vec![
-        RespValue::BulkString(Some("HGETALL".to_string())),
-        RespValue::BulkString(Some("mykey".to_string())),
+        RespValue::BulkString(Bytes::from("HGETALL".to_string())),
+        RespValue::BulkString(Bytes::from("mykey".to_string())),
     ]);
 
     if let Some(cmd) = Command::parse(&hgetall_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let result_bytes = rt.block_on(cmd.execute(&db));
+        let result = String::from_utf8_lossy(&result_bytes);
         assert!(result.contains("WRONGTYPE"));
     }
 }
@@ -465,10 +485,12 @@ fn test_invalid_commands_integration() {
     // Test parsing of invalid commands
     let invalid_cmds = vec![
         RespValue::Array(vec![]), // Empty array
-        RespValue::Array(vec![RespValue::BulkString(Some("INVALID".to_string()))]), // Unknown command
-        RespValue::Array(vec![RespValue::BulkString(Some("SET".to_string()))]), // Missing arguments
-        RespValue::Array(vec![RespValue::BulkString(Some("GET".to_string()))]), // Missing key
-        RespValue::BulkString(Some("NOT_AN_ARRAY".to_string())),                // Not an array
+        RespValue::Array(vec![RespValue::BulkString(Bytes::from(
+            "INVALID".to_string(),
+        ))]), // Unknown command
+        RespValue::Array(vec![RespValue::BulkString(Bytes::from("SET".to_string()))]), // Missing arguments
+        RespValue::Array(vec![RespValue::BulkString(Bytes::from("GET".to_string()))]), // Missing key
+        RespValue::BulkString(Bytes::from("NOT_AN_ARRAY".to_string())), // Not an array
     ];
 
     for invalid_cmd in invalid_cmds {
@@ -510,12 +532,13 @@ fn test_complex_sequence_integration() {
         let parts: Vec<&str> = cmd_str.split_whitespace().collect();
         let resp_parts: Vec<RespValue> = parts
             .into_iter()
-            .map(|p| RespValue::BulkString(Some(p.to_string())))
+            .map(|p| RespValue::BulkString(Bytes::from(p.to_string())))
             .collect();
         let resp_value = RespValue::Array(resp_parts);
 
         if let Some(cmd) = Command::parse(&resp_value) {
-            let result = rt.block_on(cmd.execute(&db));
+            let result_bytes = rt.block_on(cmd.execute(&db));
+            let result = String::from_utf8_lossy(&result_bytes);
             assert_eq!(result, expected, "Command '{}' failed", cmd_str);
         } else {
             panic!("Failed to parse command: {}", cmd_str);

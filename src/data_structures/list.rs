@@ -1,10 +1,11 @@
 // List data structure for Rudis
 
+use bytes::Bytes;
 use std::collections::VecDeque;
 
 #[derive(Debug)]
 pub struct RedisList {
-    items: VecDeque<String>,
+    items: VecDeque<Bytes>,
 }
 
 impl RedisList {
@@ -14,25 +15,25 @@ impl RedisList {
         }
     }
 
-    pub fn rpush(&mut self, item: String) {
+    pub fn rpush(&mut self, item: Bytes) {
         self.items.push_back(item);
     }
-    pub fn lpush(&mut self, item: String) {
+    pub fn lpush(&mut self, item: Bytes) {
         self.items.push_front(item);
     }
-    pub fn push(&mut self, item: String) {
+    pub fn push(&mut self, item: Bytes) {
         self.rpush(item);
     }
-    pub fn lpop(&mut self) -> Option<String> {
+    pub fn lpop(&mut self) -> Option<Bytes> {
         self.items.pop_front()
     }
-    pub fn rpop(&mut self) -> Option<String> {
+    pub fn rpop(&mut self) -> Option<Bytes> {
         self.items.pop_back()
     }
-    pub fn pop(&mut self) -> Option<String> {
+    pub fn pop(&mut self) -> Option<Bytes> {
         self.rpop()
     }
-    pub fn index(&self, index: i64) -> Option<&String> {
+    pub fn index(&self, index: i64) -> Option<&Bytes> {
         let len = self.items.len() as i64;
         let actual_index = if index < 0 { len + index } else { index };
         if actual_index >= 0 && actual_index < len {
@@ -41,7 +42,7 @@ impl RedisList {
             None
         }
     }
-    pub fn range(&self, start: i64, end: i64) -> Vec<&String> {
+    pub fn range(&self, start: i64, end: i64) -> Vec<Bytes> {
         let len = self.items.len() as i64;
         let actual_start = if start < 0 { len + start } else { start };
         let actual_end = if end < 0 { len + end } else { end };
@@ -50,7 +51,8 @@ impl RedisList {
         if start_idx >= end_idx {
             vec![]
         } else {
-            self.items.range(start_idx..end_idx).collect()
+            // Cloning Bytes is cheap (ref count bump)
+            self.items.range(start_idx..end_idx).cloned().collect()
         }
     }
     pub fn trim(&mut self, start: i64, end: i64) {
@@ -79,7 +81,7 @@ impl RedisList {
         self.items.len()
     }
 
-    pub(crate) fn set(&mut self, index: i64, value: String) {
+    pub(crate) fn set(&mut self, index: i64, value: Bytes) {
         let len = self.items.len() as i64;
         let actual_index = if index < 0 { len + index } else { index };
         if let Some(val) = self.items.get_mut(actual_index as usize) {
@@ -90,8 +92,8 @@ impl RedisList {
     pub(crate) fn insert(
         &mut self,
         ord: &str,
-        pivot: &str,
-        value: String,
+        pivot: &Bytes,
+        value: Bytes,
     ) -> Result<i64, crate::commands::CommandError> {
         if let Some(idx) = self.items.iter().position(|x| x == pivot) {
             match ord {

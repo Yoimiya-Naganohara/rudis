@@ -1,53 +1,44 @@
 // String data structure for Rudis
 
+use bytes::{Bytes, BytesMut};
 use std::str::FromStr;
-use std::sync::Arc;
-
-// SharedSyncString: Arc<String> for zero-copy shared reads
-type SharedSyncString = Arc<String>;
 
 #[derive(Debug, Clone)]
 pub struct RedisString {
-    value: SharedSyncString,
+    value: Bytes,
 }
 
 impl RedisString {
-    pub fn new(value: String) -> Self {
-        RedisString { 
-            value: Arc::new(value)
-        }
+    pub fn new(value: Bytes) -> Self {
+        RedisString { value }
     }
 
-    pub fn get(&self) -> SharedSyncString {
-        Arc::clone(&self.value)
+    pub fn get(&self) -> Bytes {
+        self.value.clone()
     }
 
-    pub fn set(&mut self, value: String) {
-        // Simple replacement - creates new Arc
-        self.value = Arc::new(value);
+    pub fn set(&mut self, value: Bytes) {
+        self.value = value;
     }
 
-    pub(crate) fn push_str(&mut self, value: &str) {
-        // CoW: Only clone if there are other references
-        if Arc::strong_count(&self.value) > 1 {
-            // Other readers exist - clone before modifying
-            let mut new_value = (*self.value).clone();
-            new_value.push_str(value);
-            self.value = Arc::new(new_value);
-        } else {
-            // We're the only owner - modify in place
-            let mut new_value = Arc::try_unwrap(std::mem::replace(&mut self.value, Arc::new(String::new())))
-                .unwrap_or_else(|arc| (*arc).clone());
-            new_value.push_str(value);
-            self.value = Arc::new(new_value);
-        }
+    pub(crate) fn append(&mut self, value: Bytes) {
+        let mut new_value = BytesMut::with_capacity(self.value.len() + value.len());
+        new_value.extend_from_slice(&self.value);
+        new_value.extend_from_slice(&value);
+        self.value = new_value.freeze();
     }
 
     pub(crate) fn len(&self) -> usize {
         self.value.len()
     }
 
-    pub(crate) fn parse<F: std::str::FromStr>(&self) -> Result<F, <F as FromStr>::Err> {
-        self.value.parse::<F>()
+    /// Try to parse the string as a number (integer or float)
+    /// Returns error if the bytes are not valid UTF-8 or not a valid number
+    pub(crate) fn parse<F: FromStr>(&self) -> Result<F, ()> {
+        // We return Result<F, ()> to simplify error handling for now,
+        // as Utf8Error and ParseIntError/ParseFloatError are different types.
+        // In a real app we'd want a unified error type here.
+        let s = std::str::from_utf8(&self.value).map_err(|_| ())?;
+        s.parse::<F>().map_err(|_| ())
     }
 }

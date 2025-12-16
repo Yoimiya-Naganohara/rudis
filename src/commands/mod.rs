@@ -3,94 +3,105 @@
 
 use crate::{
     commands::command_helper::{
-        format_array, format_bulk_string, format_error, format_integer, format_null,
-        format_simple_string,
+        format_array_bytes, format_bulk_string, format_error, format_hash_response, format_integer,
+        format_null, format_simple_string,
     },
-    database::{HashOp, KeyOp, ListOp, SetOp, SharedDatabase, SortedSetOp, StringOp},
+    database::SharedDatabase,
     networking::resp::RespValue,
 };
-mod errors;
+use bytes::Bytes;
+
+pub mod connection;
+pub mod errors;
+pub mod hashes;
+pub mod keys;
+pub mod lists;
+pub mod sets;
+pub mod strings;
+pub mod zsets;
+
 pub use errors::*;
+
 #[derive(Debug, PartialEq)]
 pub enum Command {
     // Connection Commands
-    Ping(Option<String>), // PING [message] - Test connection, optionally echo message
+    Ping(Option<Bytes>), // PING [message] - Test connection, optionally echo message
     Quit,
     // String Commands
-    Get(String),                             // GET key - Get value of key
-    Set(String, String, Option<SetOptions>), // SET key value [NX|XX] [EX|PX|KEEPTTL] - Set key to hold string value
-    Del(Vec<String>),                        // DEL key [key ...] - Delete one or more keys
-    Incr(String),                            // INCR key - Increment integer value of key by 1
-    Decr(String),                            // DECR key - Decrement integer value of key by 1
-    IncrBy(String, String), // INCRBY key increment - Increment integer value of key by increment
-    DecrBy(String, String), // DECRBY key decrement - Decrement integer value of key by decrement
-    Append(String, String), // APPEND key value - Append value to key
-    Strlen(String),         // STRLEN key - Get length of string stored in key
-    MGet(Vec<String>),      // MGET key [key ...] - Get values of multiple keys
-    MSet(Vec<(String, String)>), // MSET key value [key value ...] - Set multiple keys to multiple values
+    Get(Bytes),                            // GET key - Get value of key
+    Set(Bytes, Bytes, Option<SetOptions>), // SET key value [NX|XX] [EX|PX|KEEPTTL] - Set key to hold string value
+    Del(Vec<Bytes>),                       // DEL key [key ...] - Delete one or more keys
+    Incr(Bytes),                           // INCR key - Increment integer value of key by 1
+    Decr(Bytes),                           // DECR key - Decrement integer value of key by 1
+    IncrBy(Bytes, Bytes), // INCRBY key increment - Increment integer value of key by increment
+    DecrBy(Bytes, Bytes), // DECRBY key decrement - Decrement integer value of key by decrement
+    Append(Bytes, Bytes), // APPEND key value - Append value to key
+    Strlen(Bytes),        // STRLEN key - Get length of string stored in key
+    MGet(Vec<Bytes>),     // MGET key [key ...] - Get values of multiple keys
+    MSet(Vec<(Bytes, Bytes)>), // MSET key value [key value ...] - Set multiple keys to multiple values
 
     // Hash Commands
-    HSet(String, String, String), // HSET key field value - Set field in hash stored at key to value
-    HGet(String, String),         // HGET key field - Get value of field in hash stored at key
-    HDel(String, Vec<String>),    // HDEL key field [field ...] - Delete one or more hash fields
-    HGetAll(String),              // HGETALL key - Get all fields and values in hash
-    HKeys(String),                // HKEYS key - Get all field names in hash
-    HVals(String),                // HVALS key - Get all values in hash
-    HLen(String),                 // HLEN key - Get number of fields in hash
-    HExists(String, String),      // HEXISTS key field - Check if field exists in hash
-    HIncrBy(String, String, String), // HINCRBY key field increment - Increment integer value of hash field
-    HIncrByFloat(String, String, String), // HINCRBYFLOAT key field increment - Increment float value of hash field
+    HSet(Bytes, Bytes, Bytes), // HSET key field value - Set field in hash stored at key to value
+    HGet(Bytes, Bytes),        // HGET key field - Get value of field in hash stored at key
+    HDel(Bytes, Vec<Bytes>),   // HDEL key field [field ...] - Delete one or more hash fields
+    HGetAll(Bytes),            // HGETALL key - Get all fields and values in hash
+    HKeys(Bytes),              // HKEYS key - Get all field names in hash
+    HVals(Bytes),              // HVALS key - Get all values in hash
+    HLen(Bytes),               // HLEN key - Get number of fields in hash
+    HExists(Bytes, Bytes),     // HEXISTS key field - Check if field exists in hash
+    HIncrBy(Bytes, Bytes, Bytes), // HINCRBY key field increment - Increment integer value of hash field
+    HIncrByFloat(Bytes, Bytes, Bytes), // HINCRBYFLOAT key field increment - Increment float value of hash field
 
     // List Commands
-    LPush(String, Vec<String>), // LPUSH key element [element ...] - Insert elements at head of list
-    RPush(String, Vec<String>), // RPUSH key element [element ...] - Insert elements at tail of list
-    LPop(String),               // LPOP key - Remove and return first element of list
-    RPop(String),               // RPOP key - Remove and return last element of list
-    LLen(String),               // LLEN key - Get length of list
-    LIndex(String, String),     // LINDEX key index - Get element at index in list
-    LRange(String, String, String), // LRANGE key start stop - Get range of elements from list
-    LTrim(String, String, String), // LTRIM key start stop - Trim list to specified range
-    LSet(String, String, String), // LSET key index element - Set element at index in list
-    LInsert(String, String, String, String), // LINSERT key BEFORE|AFTER pivot element - Insert element before/after pivot
+    LPush(Bytes, Vec<Bytes>), // LPUSH key element [element ...] - Insert elements at head of list
+    RPush(Bytes, Vec<Bytes>), // RPUSH key element [element ...] - Insert elements at tail of list
+    LPop(Bytes),              // LPOP key - Remove and return first element of list
+    RPop(Bytes),              // RPOP key - Remove and return last element of list
+    LLen(Bytes),              // LLEN key - Get length of list
+    LIndex(Bytes, Bytes),     // LINDEX key index - Get element at index in list
+    LRange(Bytes, Bytes, Bytes), // LRANGE key start stop - Get range of elements from list
+    LTrim(Bytes, Bytes, Bytes), // LTRIM key start stop - Trim list to specified range
+    LSet(Bytes, Bytes, Bytes), // LSET key index element - Set element at index in list
+    LInsert(Bytes, Bytes, Bytes, Bytes), // LINSERT key BEFORE|AFTER pivot element - Insert element before/after pivot
 
     // Set Commands
-    SAdd(String, Vec<String>), // SADD key member [member ...] - Add members to set
-    SRem(String, Vec<String>), // SREM key member [member ...] - Remove members from set
-    SMembers(String),          // SMEMBERS key - Get all members in set
-    SCard(String),             // SCARD key - Get number of members in set
-    SIsMember(String, String), // SISMEMBER key member - Check if member exists in set
-    SInter(Vec<String>),       // SINTER key [key ...] - Intersect multiple sets
-    SUnion(Vec<String>),       // SUNION key [key ...] - Union multiple sets
-    SDiff(Vec<String>),        // SDIFF key [key ...] - Subtract multiple sets
+    SAdd(Bytes, Vec<Bytes>), // SADD key member [member ...] - Add members to set
+    SRem(Bytes, Vec<Bytes>), // SREM key member [member ...] - Remove members from set
+    SMembers(Bytes),         // SMEMBERS key - Get all members in set
+    SCard(Bytes),            // SCARD key - Get number of members in set
+    SIsMember(Bytes, Bytes), // SISMEMBER key member - Check if member exists in set
+    SInter(Vec<Bytes>),      // SINTER key [key ...] - Intersect multiple sets
+    SUnion(Vec<Bytes>),      // SUNION key [key ...] - Union multiple sets
+    SDiff(Vec<Bytes>),       // SDIFF key [key ...] - Subtract multiple sets
 
     // Sorted Set Commands
-    ZAdd(String, Vec<(String, String)>), // ZADD key score member [score member ...] - Add members to sorted set
-    ZRem(String, Vec<String>), // ZREM key member [member ...] - Remove members from sorted set
-    ZRange(String, String, String), // ZRANGE key start stop - Get range of members in sorted set
-    ZRangeByScore(String, String, String), // ZRANGEBYSCORE key min max - Get members by score range
-    ZCard(String),             // ZCARD key - Get number of members in sorted set
-    ZScore(String, String),    // ZSCORE key member - Get score of member in sorted set
-    ZRank(String, String),     // ZRANK key member - Get rank of member in sorted set
+    ZAdd(Bytes, Vec<(Bytes, Bytes)>), // ZADD key score member [score member ...] - Add members to sorted set
+    ZRem(Bytes, Vec<Bytes>), // ZREM key member [member ...] - Remove members from sorted set
+    ZRange(Bytes, Bytes, Bytes), // ZRANGE key start stop - Get range of members in sorted set
+    ZRangeByScore(Bytes, Bytes, Bytes), // ZRANGEBYSCORE key min max - Get members by score range
+    ZCard(Bytes),            // ZCARD key - Get number of members in sorted set
+    ZScore(Bytes, Bytes),    // ZSCORE key member - Get score of member in sorted set
+    ZRank(Bytes, Bytes),     // ZRANK key member - Get rank of member in sorted set
 
     // Key Commands
-    Exists(Vec<String>),    // EXISTS key [key ...] - Check if keys exist
-    Expire(String, String), // EXPIRE key seconds - Set key expiration time
-    Ttl(String),            // TTL key - Get remaining time to live of key
-    Type(String),           // TYPE key - Get type of key
-    Keys(String),           // KEYS pattern - Find keys matching pattern
-    FlushAll,               // FLUSHALL - Remove all keys from all databases
-    FlushDB,                // FLUSHDB - Remove all keys from current database
+    Exists(Vec<Bytes>),   // EXISTS key [key ...] - Check if keys exist
+    Expire(Bytes, Bytes), // EXPIRE key seconds - Set key expiration time
+    Ttl(Bytes),           // TTL key - Get remaining time to live of key
+    Type(Bytes),          // TYPE key - Get type of key
+    Keys(Bytes),          // KEYS pattern - Find keys matching pattern
+    FlushAll,             // FLUSHALL - Remove all keys from all databases
+    FlushDB,              // FLUSHDB - Remove all keys from current database
 
     // Connection/Server Commands
-    Echo(String),         // ECHO message - Echo the given string
-    Auth(String),         // AUTH password - Authenticate to server
-    Select(String),       // SELECT index - Change selected database
-    Info(Option<String>), // INFO [section] - Get server information
+    Echo(Bytes),         // ECHO message - Echo the given string
+    Auth(Bytes),         // AUTH password - Authenticate to server
+    Select(Bytes),       // SELECT index - Change selected database
+    Info(Option<Bytes>), // INFO [section] - Get server information
 
     // Additional String Commands
-    SetNX(String, String), // SETNX key value - Set key only if it doesn't exist
-    SetEX(String, String, String), // SETEX key seconds value - Set key with expiration
-    GetSet(String, String), // GETSET key value - Set key and return old value
+    SetNX(Bytes, Bytes), // SETNX key value - Set key only if it doesn't exist
+    SetEX(Bytes, Bytes, Bytes), // SETEX key seconds value - Set key with expiration
+    GetSet(Bytes, Bytes), // GETSET key value - Set key and return old value
 }
 #[derive(Debug, PartialEq)]
 pub struct SetOptions {
@@ -167,8 +178,9 @@ impl Command {
     pub fn parse(resp_value: &RespValue) -> Option<Self> {
         match resp_value {
             RespValue::Array(elements) if !elements.is_empty() => {
-                let command_name =
-                    command_helper::extract_bulk_string(&elements[0])?.to_uppercase();
+                let command_name_bytes = command_helper::extract_bulk_string(&elements[0])?;
+                // Convert command name to uppercase string for matching (commands are ASCII usually)
+                let command_name = String::from_utf8_lossy(&command_name_bytes).to_uppercase();
 
                 match command_name.as_str() {
                     "PING" => parse_command!(option, elements, Ping),
@@ -200,7 +212,7 @@ impl Command {
                     "RPUSH" => parse_command!(key_fields, elements, RPush),
                     "LPOP" => parse_command!(single_key, elements, LPop),
                     "RPOP" => parse_command!(single_key, elements, RPop),
-                    "LLEN" => parse_command!(single_key, elements, LLen),
+                    "LLen" => parse_command!(single_key, elements, LLen),
                     "LINDEX" => parse_command!(key_value, elements, LIndex),
                     "LRANGE" => parse_command!(key_field_value, elements, LRange),
                     "LTRIM" => parse_command!(key_field_value, elements, LTrim),
@@ -209,11 +221,11 @@ impl Command {
                     "SADD" => parse_command!(key_fields, elements, SAdd),
                     "SREM" => parse_command!(key_fields, elements, SRem),
                     "SMEMBERS" => parse_command!(single_key, elements, SMembers),
-                    "SCARD" => parse_command!(single_key, elements, SCard),
+                    "SCard" => parse_command!(single_key, elements, SCard),
                     "SISMEMBER" => parse_command!(key_value, elements, SIsMember),
                     "SINTER" => parse_command!(keys, elements, SInter),
                     "SUNION" => parse_command!(keys, elements, SUnion),
-                    "SDIFF" => parse_command!(keys, elements, SDiff),
+                    "SDiff" => parse_command!(keys, elements, SDiff),
                     "ZADD" => parse_command!(key_pair_values, elements, ZAdd),
                     "ZREM" => parse_command!(key_fields, elements, ZRem),
                     "ZRANGE" => parse_command!(key_field_value, elements, ZRange),
@@ -242,276 +254,72 @@ impl Command {
         }
     }
 
-    pub async fn execute(&self, db: &SharedDatabase) -> String {
+    pub async fn execute(self, db: &SharedDatabase) -> Bytes {
         match self {
-            Command::Ping(None) => command_helper::format_simple_string("PONG"),
-            Command::Ping(Some(msg)) => command_helper::format_simple_string(msg),
-            Command::Quit => "#QUIT".to_owned(),
-            Command::Get(key) => match db.get(key) {
-                Some(value) => command_helper::format_bulk_string(&value),
-                None => command_helper::format_null(),
-            },
-            Command::Set(key, value, options) => {
-                let mut should_set = true;
-                if let Some(opts) = &options {
-                    let exists = db.get(&key).is_some();
-                    if opts.nx && exists {
-                        should_set = false;
-                    }
-                    if opts.xx && !exists {
-                        should_set = false;
-                    }
-                }
-                if should_set {
-                    db.set(&key, value.clone());
-                    if let Some(opts) = &options {
-                        if let Some(ex) = opts.ex {
-                            let _ = db.expire(&key, &ex.to_string());
-                        } else if let Some(px) = opts.px {
-                            let secs = (px as f64 / 1000.0).ceil() as u64;
-                            let _ = db.expire(&key, &secs.to_string());
-                        }
-                        // KEEPTTL does nothing, TTL is kept
-                    }
-                    command_helper::format_simple_string("OK")
-                } else {
-                    command_helper::format_null()
-                }
-            }
-            Command::Del(keys) => command_helper::format_integer(db.del(keys) as i64),
-            Command::Incr(key) => match db.incr(key) {
-                Ok(value) => command_helper::format_integer(value),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::Decr(key) => match db.decr(key) {
-                Ok(value) => command_helper::format_integer(value),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::IncrBy(key, value) => match db.incr_by(key, value) {
-                Ok(value) => command_helper::format_integer(value),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::DecrBy(key, value) => match db.decr_by(key, value) {
-                Ok(value) => command_helper::format_integer(value),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::Append(key, value) => {
-                command_helper::format_integer(db.append(key, value) as i64)
-            }
-            Command::Strlen(key) => command_helper::format_integer(db.str_len(key) as i64),
-            Command::MGet(keys) => command_helper::format_array(
-                keys.iter()
-                    .map(|key| match db.get(key) {
-                        Some(value) => format!("${}\r\n{}\r\n", value.len(), value),
-                        None => "$-1\r\n".to_string(),
-                    })
-                    .collect::<Vec<String>>(),
-            ),
-            Command::MSet(key_values) => {
-                key_values
-                    .iter()
-                    .for_each(|(key, value)| db.set(key, value.clone()));
-                command_helper::format_simple_string("OK")
-            }
-            Command::HSet(hash, field, value) => match db.hset(hash, field, value) {
-                Ok(result) => command_helper::format_integer(result),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::HGet(hash, field) => match db.hget(hash, field) {
-                Ok(Some(result)) => command_helper::format_bulk_string(&result),
-                Ok(None) => command_helper::format_null(),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::HDel(hash, fields) => {
-                command_helper::format_integer(db.hdel_multiple(hash, &fields) as i64)
-            }
-            Command::HGetAll(key) => match db.hget_all(key) {
-                Ok(value) => command_helper::format_hash_response(value),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::HKeys(key) => match db.hkeys(key) {
-                Ok(value) => command_helper::format_hash_response(value),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::HVals(key) => match db.hvals(key) {
-                Ok(value) => command_helper::format_hash_response(value),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::HLen(key) => match db.hlen(key) {
-                Ok(value) => command_helper::format_integer(value as i64),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::HExists(hash, field) => match db.hexists(hash, field) {
-                Ok(value) => command_helper::format_integer(if value { 1 } else { 0 }),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::HIncrBy(hash, field, value) => match db.hincrby(hash, field, &value) {
-                Ok(result) => command_helper::format_integer(result),
-                Err(e) => command_helper::format_error(e),
-            },
+            Command::Ping(msg) => connection::ping(msg),
+            Command::Quit => connection::quit(),
+            Command::Get(key) => strings::get(db, key),
+            Command::Set(key, value, options) => strings::set(db, key, value, options),
+            Command::Del(keys) => strings::del(db, keys),
+            Command::Incr(key) => strings::incr(db, key),
+            Command::Decr(key) => strings::decr(db, key),
+            Command::IncrBy(key, value) => strings::incr_by(db, key, value),
+            Command::DecrBy(key, value) => strings::decr_by(db, key, value),
+            Command::Append(key, value) => strings::append(db, key, value),
+            Command::Strlen(key) => strings::strlen(db, key),
+            Command::MGet(keys) => strings::mget(db, keys),
+            Command::MSet(key_values) => strings::mset(db, key_values),
+            Command::HSet(hash, field, value) => hashes::hset(db, hash, field, value),
+            Command::HGet(hash, field) => hashes::hget(db, hash, field),
+            Command::HDel(hash, fields) => hashes::hdel(db, hash, fields),
+            Command::HGetAll(key) => hashes::hgetall(db, key),
+            Command::HKeys(key) => hashes::hkeys(db, key),
+            Command::HVals(key) => hashes::hvals(db, key),
+            Command::HLen(key) => hashes::hlen(db, key),
+            Command::HExists(hash, field) => hashes::hexists(db, hash, field),
+            Command::HIncrBy(hash, field, value) => hashes::hincrby(db, hash, field, value),
             Command::HIncrByFloat(hash, field, value) => {
-                match db.hincrbyfloat(hash, field, &value) {
-                    Ok(result) => command_helper::format_bulk_string(&result.to_string()),
-                    Err(e) => command_helper::format_error(e),
-                }
+                hashes::hincrbyfloat(db, hash, field, value)
             }
-            Command::LPush(key, value) => {
-                db.lpush(key, value);
-                format_simple_string("OK")
-            }
-            Command::RPush(key, value) => {
-                db.rpush(key, value);
-                format_simple_string("OK")
-            }
-            Command::LPop(key) => match db.lpop(key) {
-                Some(result) => format_simple_string(&result),
-                None => format_null(),
-            },
-            Command::RPop(key) => match db.rpop(key) {
-                Some(result) => format_simple_string(&result),
-                None => format_null(),
-            },
-            Command::LLen(key) => format_integer(db.llen(key) as i64),
-            Command::LIndex(key, index) => match db.lindex(key, index) {
-                Some(val) => format_simple_string(&val),
-                None => format_null(),
-            },
-            Command::LRange(key, start, end) => match db.lrange(key, start, end) {
-                Ok(val) => format_array(val.iter().map(|v| format_bulk_string(v)).collect()),
-                Err(e) => format_error(e),
-            },
-            Command::LTrim(key, start, end) => match db.ltrim(key, start, end) {
-                Ok(val) => format_simple_string("OK"),
-                Err(e) => format_error(e),
-            },
-            Command::LSet(key, index, value) => match db.lset(key, index, value.to_string()) {
-                Ok(val) => format_simple_string("OK"),
-                Err(e) => format_error(e),
-            },
-            Command::LInsert(key, ord, pivot, value) => {
-                match db.linsert(key, ord, pivot, value.to_string()) {
-                    Ok(val) => format_integer(val),
-                    Err(e) => format_error(e),
-                }
-            }
-            Command::SAdd(key, values) => format_integer(db.sadd(key, values) as i64),
-            Command::SRem(key, values) => format_integer(db.srem(key, values) as i64),
-            Command::SMembers(key) => match db.smembers(key) {
-                Ok(value) => {
-                    format_array(value.iter().map(|v| format_bulk_string(v)).collect())
-                }
-                Err(e) => format_error(e),
-            },
-            Command::SCard(key) => format_integer(db.scard(key) as i64),
-            Command::SIsMember(key, member) => format_integer(db.sismember(key, member) as i64),
-            Command::SInter(items) => match db.sinter(items) {
-                Ok(res) => format_array(res.iter().map(|v| format_bulk_string(v)).collect()),
-                Err(e) => format_error(e),
-            },
-            Command::SUnion(items) => match db.sunion(items) {
-                Ok(res) => format_array(res.iter().map(|v| format_bulk_string(v)).collect()),
-                Err(e) => format_error(e),
-            },
-            Command::SDiff(items) => match db.sdiff(items) {
-                Ok(res) => format_array(res.iter().map(|v| format_bulk_string(v)).collect()),
-                Err(e) => format_error(e),
-            },
-            Command::ZAdd(key, pairs) => {
-                let added = db.zadd(key, pairs);
-                command_helper::format_integer(added as i64)
-            }
-            Command::ZRem(key, members) => {
-                let removed = db.zrem(key, members);
-                command_helper::format_integer(removed as i64)
-            }
-            Command::ZRange(key, start, stop) => match db.zrange(key, start, stop) {
-                Ok(members) => command_helper::format_array(
-                    members
-                        .iter()
-                        .map(|m| command_helper::format_bulk_string(m))
-                        .collect(),
-                ),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::ZRangeByScore(key, min, max) => match db.zrange_by_score(key, min, max) {
-                Ok(members) => command_helper::format_array(
-                    members
-                        .iter()
-                        .map(|m| command_helper::format_bulk_string(m))
-                        .collect(),
-                ),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::ZCard(key) => command_helper::format_integer(db.zcard(key) as i64),
-            Command::ZScore(key, member) => match db.zscore(key, member) {
-                Some(score) => command_helper::format_bulk_string(&score.to_string()),
-                None => command_helper::format_null(),
-            },
-            Command::ZRank(key, member) => match db.zrank(key, member) {
-                Some(rank) => command_helper::format_integer(rank as i64),
-                None => command_helper::format_null(),
-            },
-            Command::Exists(keys) => command_helper::format_integer(db.exist(keys) as i64),
-            Command::Expire(key, seconds) => match db.expire(key, seconds) {
-                Ok(()) => command_helper::format_simple_string("OK"),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::Ttl(key) => command_helper::format_integer(db.ttl(key)),
-            Command::Type(key) => {
-                // TODO: implement type checking
-                command_helper::format_simple_string(db.data_type(key)) // placeholder
-            }
-            Command::Keys(pattern) => match db.keys(pattern) {
-                Ok(keys) => command_helper::format_array(
-                    keys.iter()
-                        .map(|k| command_helper::format_bulk_string(k))
-                        .collect(),
-                ),
-                Err(e) => command_helper::format_error(e),
-            },
-            Command::FlushAll => {
-                db.flush_all();
-                command_helper::format_simple_string("OK")
-            }
-            Command::FlushDB => {
-                db.flush_db();
-                command_helper::format_simple_string("OK")
-            }
-            Command::Echo(msg) => command_helper::format_bulk_string(msg),
-            Command::Auth(_) => command_helper::format_simple_string("OK"),
-            Command::Select(db_index) => match db_index.parse::<u8>() {
-                Ok(db_num) if db_num <= 15 => {
-                    db.select(db_num);
-                    command_helper::format_simple_string("OK")
-                }
-                _ => command_helper::format_error("ERR invalid DB index"),
-            },
-            Command::Info(_) => {
-                command_helper::format_bulk_string("# Server\r\nredis_version:6.0.0\r\n")
-            }
-            Command::SetNX(key, value) => {
-                if db.get(key).is_none() {
-                    db.set(key, value.clone());
-                    command_helper::format_integer(1)
-                } else {
-                    command_helper::format_integer(0)
-                }
-            }
-            Command::SetEX(key, seconds, value) => {
-                db.set(key, value.clone());
-                match db.expire(key, seconds) {
-                    Ok(()) => command_helper::format_simple_string("OK"),
-                    Err(e) => command_helper::format_error(e),
-                }
-            }
-            Command::GetSet(key, value) => {
-                let old = db.get(key).map(|s| s.to_string());
-                db.set(key, value.clone());
-                match old {
-                    Some(val) => command_helper::format_bulk_string(&val),
-                    None => command_helper::format_null(),
-                }
-            }
+            Command::LPush(key, value) => lists::lpush(db, key, value),
+            Command::RPush(key, value) => lists::rpush(db, key, value),
+            Command::LPop(key) => lists::lpop(db, key),
+            Command::RPop(key) => lists::rpop(db, key),
+            Command::LLen(key) => lists::llen(db, key),
+            Command::LIndex(key, index) => lists::lindex(db, key, index),
+            Command::LRange(key, start, end) => lists::lrange(db, key, start, end),
+            Command::LTrim(key, start, end) => lists::ltrim(db, key, start, end),
+            Command::LSet(key, index, value) => lists::lset(db, key, index, value),
+            Command::LInsert(key, ord, pivot, value) => lists::linsert(db, key, ord, pivot, value),
+            Command::SAdd(key, values) => sets::sadd(db, key, values),
+            Command::SRem(key, values) => sets::srem(db, key, values),
+            Command::SMembers(key) => sets::smembers(db, key),
+            Command::SCard(key) => sets::scard(db, key),
+            Command::SIsMember(key, member) => sets::sismember(db, key, member),
+            Command::SInter(items) => sets::sinter(db, items),
+            Command::SUnion(items) => sets::sunion(db, items),
+            Command::SDiff(items) => sets::sdiff(db, items),
+            Command::ZAdd(key, pairs) => zsets::zadd(db, key, pairs),
+            Command::ZRem(key, members) => zsets::zrem(db, key, members),
+            Command::ZRange(key, start, stop) => zsets::zrange(db, key, start, stop),
+            Command::ZRangeByScore(key, min, max) => zsets::zrangebyscore(db, key, min, max),
+            Command::ZCard(key) => zsets::zcard(db, key),
+            Command::ZScore(key, member) => zsets::zscore(db, key, member),
+            Command::ZRank(key, member) => zsets::zrank(db, key, member),
+            Command::Exists(keys) => keys::exists(db, keys),
+            Command::Expire(key, seconds) => keys::expire(db, key, seconds),
+            Command::Ttl(key) => keys::ttl(db, key),
+            Command::Type(key) => keys::type_(db, key),
+            Command::Keys(pattern) => keys::keys(db, pattern),
+            Command::FlushAll => keys::flushall(db),
+            Command::FlushDB => keys::flushdb(db),
+            Command::Echo(msg) => connection::echo(msg),
+            Command::Auth(msg) => connection::auth(msg),
+            Command::Select(db_index) => connection::select(db, db_index),
+            Command::Info(section) => connection::info(section),
+            Command::SetNX(key, value) => strings::setnx(db, key, value),
+            Command::SetEX(key, seconds, value) => strings::setex(db, key, seconds, value),
+            Command::GetSet(key, value) => strings::getset(db, key, value),
         }
     }
 }

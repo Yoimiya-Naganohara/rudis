@@ -2,12 +2,13 @@
 // Handles TCP connections and protocol parsing
 pub mod resp;
 use crate::commands::{command_helper::format_error, Command};
-use crate::{database::SharedDatabase, networking::resp::RespParser};
+use crate::database::SharedDatabase;
 use std::{io, net::SocketAddr};
 use tokio::{
-    io::{AsyncWriteExt, BufReader},
+    io::AsyncWriteExt,
     net::{TcpListener, TcpStream},
 };
+use tracing::info;
 
 pub struct Networking {
     listener: TcpListener,
@@ -21,7 +22,7 @@ impl Networking {
 
     pub async fn listen(&self, db: &SharedDatabase) -> tokio::io::Result<()> {
         // TODO: Implement connection handling
-        println!("Listening for connections...");
+        info!("Listening for connections...");
 
         loop {
             let (stream, _addr) = self.listener.accept().await?;
@@ -31,49 +32,58 @@ impl Networking {
     }
     pub async fn handle(
         mut stream: TcpStream,
-        addr: SocketAddr,
+        _addr: SocketAddr,
         db: &SharedDatabase,
     ) -> tokio::io::Result<()> {
-        let (reader, mut writer) = stream.split();
-        let mut buf_reader = BufReader::new(reader);
-        let mut parser = RespParser::new();
-        loop {
-            match parser.read_value(&mut buf_reader).await {
-                Ok(resp_value) => {
-                    // dbg!(&resp_value);
-                    let response = match Command::parse(&resp_value) {
-                        Some(cmd) => {
-                            // println!("Parsed command: {:?}", cmd);
-                            if cmd == Command::Quit {
-                                break;
-                            }
-                            cmd.execute(&db).await
-                        }
+        use bytes::BytesMut;
+        use tokio::io::AsyncReadExt;
 
-                        None => format_error(crate::commands::CommandError::UnknownCommand),
-                    };
-                    writer.write_all(response.as_bytes()).await?;
-                }
-                Err(e) => {
-                    // if e.kind() == io::ErrorKind::UnexpectedEof {
-                    //     break;
-                    // }
-                    // eprintln!("Read error: {e}")
-                    break;
+        let (mut reader, mut writer) = stream.split();
+        let mut buffer = BytesMut::with_capacity(4096);
+
+        loop {
+            // Try to decode frames from the buffer
+            // We use a loop here to handle multiple pipelined commands in one buffer
+            loop {
+                use bytes::Bytes;
+                // Peek at the buffer to decode
+                let peek_bytes = Bytes::copy_from_slice(&buffer);
+                match redis_protocol::resp2::decode::decode(&peek_bytes) {
+                    Ok(Some((frame, consumed))) => {
+                        // We have a complete frame
+
+                        // Advance the buffer by the number of bytes consumed
+                        let _ = buffer.split_to(consumed);
+
+                        let response = match Command::parse(&frame) {
+                            Some(cmd) => {
+                                if cmd == Command::Quit {
+                                    return Ok(());
+                                }
+                                cmd.execute(&db).await
+                            }
+                            None => format_error(crate::commands::CommandError::UnknownCommand),
+                        };
+                        writer.write_all(&response).await?;
+                    }
+                    Ok(None) => {
+                        // Incomplete frame, break inner loop to read more data
+                        break;
+                    }
+                    Err(_e) => {
+                        // Protocol error
+                        // eprintln!("Protocol error: {:?}", e);
+                        return Err(io::Error::new(io::ErrorKind::InvalidData, "Protocol Error"));
+                    }
                 }
             }
-            // line.clear();
-            // match parser.read_value(&mut line).await {
-            //     Ok(0) => break,
-            //     Ok(_) => {
-            //         let command = line.trim_end();
-            //         println!("Received: {:?}", command);
-            //         if let Ok(cmd) = parser.read_value(command).await {
 
-            //         }
-            //     }
-            //     Err(e) => eprintln!("Read error: {e}"),
-            // }
+            // Read more data into buffer
+            let n = reader.read_buf(&mut buffer).await?;
+            if n == 0 {
+                // Connection closed
+                break;
+            }
         }
         Ok(())
     }

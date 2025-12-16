@@ -1,10 +1,11 @@
 // Hash data structure for Rudis
 
+use bytes::Bytes;
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct RedisHash {
-    fields: HashMap<String, String>,
+    fields: HashMap<Bytes, Bytes>,
 }
 
 impl RedisHash {
@@ -14,7 +15,7 @@ impl RedisHash {
         }
     }
 
-    pub fn hset(&mut self, field: String, value: String) -> i64 {
+    pub fn hset(&mut self, field: Bytes, value: Bytes) -> i64 {
         let is_new = !self.fields.contains_key(&field);
         self.fields.insert(field, value);
         if is_new {
@@ -24,21 +25,21 @@ impl RedisHash {
         }
     }
 
-    pub fn hget(&self, field: &str) -> Option<&String> {
+    pub fn hget(&self, field: &Bytes) -> Option<&Bytes> {
         self.fields.get(field)
     }
 
-    pub fn hdel(&mut self, field: &str) -> bool {
+    pub fn hdel(&mut self, field: &Bytes) -> bool {
         self.fields.remove(field).is_some()
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
+    pub fn keys(&self) -> impl Iterator<Item = &Bytes> {
         self.fields.keys()
     }
-    pub fn values(&self) -> impl Iterator<Item = &String> {
+    pub fn values(&self) -> impl Iterator<Item = &Bytes> {
         self.fields.values()
     }
-    pub fn flatten(&self) -> impl Iterator<Item = &String> {
+    pub fn flatten(&self) -> impl Iterator<Item = &Bytes> {
         self.fields.iter().flat_map(|(k, v)| [k, v])
     }
 
@@ -46,43 +47,47 @@ impl RedisHash {
         self.fields.len()
     }
 
-    pub fn hexists(&self, field: &str) -> bool {
+    pub fn hexists(&self, field: &Bytes) -> bool {
         self.fields.contains_key(field)
     }
 
     pub fn hincrby(
         &mut self,
-        field: &str,
+        field: &Bytes,
         value: i64,
     ) -> Result<i64, crate::commands::CommandError> {
         let current_value = if let Some(existing) = self.fields.get(field) {
-            existing
-                .parse::<i64>()
+            let s = std::str::from_utf8(existing)
+                .map_err(|_| crate::commands::CommandError::InvalidInteger)?;
+            s.parse::<i64>()
                 .map_err(|_| crate::commands::CommandError::InvalidInteger)?
         } else {
             0
         };
 
         let new_value = current_value + value;
-        self.fields.insert(field.to_string(), new_value.to_string());
+        self.fields
+            .insert(field.clone(), Bytes::from(new_value.to_string()));
         Ok(new_value)
     }
 
     pub fn hincrbyfloat(
         &mut self,
-        field: &str,
+        field: &Bytes,
         value: f64,
     ) -> Result<f64, crate::commands::CommandError> {
         let current_value = if let Some(existing) = self.fields.get(field) {
-            existing
-                .parse::<f64>()
+            let s = std::str::from_utf8(existing)
+                .map_err(|_| crate::commands::CommandError::InvalidFloat)?;
+            s.parse::<f64>()
                 .map_err(|_| crate::commands::CommandError::InvalidFloat)?
         } else {
             0.0
         };
 
         let new_value = current_value + value;
-        self.fields.insert(field.to_string(), new_value.to_string());
+        self.fields
+            .insert(field.clone(), Bytes::from(new_value.to_string()));
         Ok(new_value)
     }
 }

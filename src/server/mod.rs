@@ -4,7 +4,7 @@
 use crate::{
     config::Config,
     database::{Database, SharedDatabase},
-    error::{Error, Result},
+    error::{AppError, Result},
     networking::Networking,
 };
 
@@ -18,7 +18,7 @@ impl Server {
     pub async fn new(config: Config) -> Result<Self> {
         let networking = Networking::new(&format!("{}:{}", &config.host, &config.port))
             .await
-            .map_err(Error::Io)?;
+            .map_err(AppError::Io)?;
 
         let database = Database::new_shared(config.db_num);
 
