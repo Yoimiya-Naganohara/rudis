@@ -2,7 +2,8 @@ use crate::commands::command_helper::{
     format_array_bytes, format_bulk_string, format_error, format_integer, format_null,
     format_simple_string,
 };
-use crate::database::{ListOp, SharedDatabase};
+use crate::database::traits::ListOp;
+use crate::database::SharedDatabase;
 use bytes::Bytes;
 
 pub fn lpush(db: &SharedDatabase, key: Bytes, values: Vec<Bytes>) -> Bytes {

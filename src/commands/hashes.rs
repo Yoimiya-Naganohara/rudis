@@ -1,7 +1,8 @@
 use crate::commands::command_helper::{
     format_bulk_string, format_error, format_hash_response, format_integer, format_null,
 };
-use crate::database::{HashOp, SharedDatabase};
+use crate::database::traits::HashOp;
+use crate::database::SharedDatabase;
 use bytes::Bytes;
 
 pub fn hset(db: &SharedDatabase, hash: Bytes, field: Bytes, value: Bytes) -> Bytes {

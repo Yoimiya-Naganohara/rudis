@@ -1,7 +1,8 @@
 use crate::commands::command_helper::{
     format_array_bytes, format_bulk_string, format_error, format_integer, format_null,
 };
-use crate::database::{SharedDatabase, SortedSetOp};
+use crate::database::traits::SortedSetOp;
+use crate::database::SharedDatabase;
 use bytes::Bytes;
 
 pub fn zadd(db: &SharedDatabase, key: Bytes, pairs: Vec<(Bytes, Bytes)>) -> Bytes {

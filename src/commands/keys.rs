@@ -1,7 +1,8 @@
 use crate::commands::command_helper::{
     format_array_bytes, format_bulk_string, format_error, format_integer, format_simple_string,
 };
-use crate::database::{KeyOp, SharedDatabase};
+use crate::database::traits::KeyOp;
+use crate::database::SharedDatabase;
 use bytes::Bytes;
 
 pub fn exists(db: &SharedDatabase, keys: Vec<Bytes>) -> Bytes {

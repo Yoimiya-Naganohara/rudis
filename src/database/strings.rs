@@ -1,12 +1,14 @@
-use super::{Database, RedisValue, StringOp};
-use crate::commands::Result;
+use super::{Database, RedisValue};
+use crate::commands::{CommandError, Result};
 use crate::data_structures::RedisString;
+use crate::database::traits::StringOp;
+use bytes::Bytes;
 
 impl StringOp for Database {
-    fn get(&self, key: &str) -> Option<String> {
+    fn get(&self, key: &Bytes) -> Option<Bytes> {
         if let Some(value_ref) = self.current_data().get(key) {
             if let RedisValue::String(value) = value_ref.value() {
-                Some(value.get().to_string())
+                Some(value.get())
             } else {
                 None
             }
@@ -15,7 +17,7 @@ impl StringOp for Database {
         }
     }
 
-    fn set(&self, key: &str, value: String) {
+    fn set(&self, key: &Bytes, value: Bytes) {
         let data = self.current_data();
         match data.get_mut(key) {
             Some(mut value_ref) => {
@@ -24,63 +26,64 @@ impl StringOp for Database {
                     _ => {
                         // Key exists but is wrong type - overwrite it (Redis behavior)
                         drop(value_ref);
-                        data.insert(key.to_owned(), RedisValue::String(RedisString::new(value)));
+                        data.insert(key.clone(), RedisValue::String(RedisString::new(value)));
                     }
                 }
             }
             None => {
-                data.insert(key.to_owned(), RedisValue::String(RedisString::new(value)));
+                data.insert(key.clone(), RedisValue::String(RedisString::new(value)));
             }
         }
     }
 
-    fn del(&self, keys: &[String]) -> usize {
+    fn del(&self, keys: &[Bytes]) -> usize {
         let data = self.current_data();
-        keys.into_iter()
+        keys.iter()
             .filter(|key| data.remove(*key).is_some())
             .count()
     }
 
-    fn incr(&self, key: &str) -> Result<i64> {
+    fn incr(&self, key: &Bytes) -> Result<i64> {
         self.add_value(key, 1)
     }
 
-    fn decr(&self, key: &str) -> Result<i64> {
+    fn decr(&self, key: &Bytes) -> Result<i64> {
         self.add_value(key, -1)
     }
 
-    fn incr_by(&self, key: &str, value: &str) -> Result<i64> {
-        self.add_value_by_str(key, value, 1)
+    fn incr_by(&self, key: &Bytes, value: Bytes) -> Result<i64> {
+        // Convert value (Bytes) to i64
+        let s = std::str::from_utf8(&value).map_err(|_| CommandError::InvalidInteger)?;
+        let val = s.parse::<i64>().map_err(|_| CommandError::InvalidInteger)?;
+        self.add_value(key, val)
     }
 
-    fn decr_by(&self, key: &str, value: &str) -> Result<i64> {
-        self.add_value_by_str(key, value, -1)
+    fn decr_by(&self, key: &Bytes, value: Bytes) -> Result<i64> {
+        let s = std::str::from_utf8(&value).map_err(|_| CommandError::InvalidInteger)?;
+        let val = s.parse::<i64>().map_err(|_| CommandError::InvalidInteger)?;
+        self.add_value(key, -val)
     }
 
-    fn append(&self, key: &str, value: &str) -> usize {
+    fn append(&self, key: &Bytes, value: Bytes) -> usize {
         let data = self.current_data();
         if let Some(mut value_ref) = data.get_mut(key) {
             if let RedisValue::String(current_value) = value_ref.value_mut() {
-                current_value.push_str(value);
+                current_value.append(value);
                 current_value.len()
             } else {
                 drop(value_ref);
-                data.insert(
-                    key.to_string(),
-                    RedisValue::String(RedisString::new(value.to_string())),
-                );
-                value.len()
+                let cloned_val = value.clone();
+                data.insert(key.clone(), RedisValue::String(RedisString::new(value)));
+                cloned_val.len()
             }
         } else {
-            data.insert(
-                key.to_string(),
-                RedisValue::String(RedisString::new(value.to_string())),
-            );
-            value.len()
+            let cloned_val = value.clone();
+            data.insert(key.clone(), RedisValue::String(RedisString::new(value)));
+            cloned_val.len()
         }
     }
 
-    fn str_len(&self, key: &str) -> usize {
+    fn str_len(&self, key: &Bytes) -> usize {
         if let Some(value_ref) = self.current_data().get(key) {
             if let RedisValue::String(value) = value_ref.value() {
                 value.len()

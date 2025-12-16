@@ -1,16 +1,18 @@
-use super::{Database, HashOp, RedisValue};
+use super::{Database, RedisValue};
 use crate::commands::{CommandError, Result};
 use crate::data_structures::RedisHash;
+use crate::database::traits::HashOp;
+use bytes::Bytes;
 
 impl HashOp for Database {
-    fn hset(&self, hash: &str, field: &str, value: &str) -> Result<i64> {
+    fn hset(&self, hash: &Bytes, field: Bytes, value: Bytes) -> Result<i64> {
         let data = self.current_data();
         match data.get_mut(hash) {
             Some(mut entry) => {
                 match entry.value_mut() {
                     RedisValue::Hash(existing_hash) => {
                         // Hash exists, update/add the field
-                        Ok(existing_hash.hset(field.to_string(), value.to_string()))
+                        Ok(existing_hash.hset(field, value))
                     }
                     _ => {
                         // Key exists but is not a hash
@@ -21,14 +23,14 @@ impl HashOp for Database {
             None => {
                 // Key doesn't exist, create new hash
                 let mut new_hash = RedisHash::new();
-                new_hash.hset(field.to_string(), value.to_string());
-                data.insert(hash.to_string(), RedisValue::Hash(new_hash));
+                new_hash.hset(field, value);
+                data.insert(hash.clone(), RedisValue::Hash(new_hash));
                 Ok(1) // New field was added
             }
         }
     }
 
-    fn hget(&self, hash: &str, field: &str) -> Result<Option<String>> {
+    fn hget(&self, hash: &Bytes, field: &Bytes) -> Result<Option<Bytes>> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
                 RedisValue::Hash(existing_hash) => Ok(existing_hash.hget(field).map(|s| s.clone())),
@@ -38,7 +40,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hdel(&self, hash: &str, field: &str) -> bool {
+    fn hdel(&self, hash: &Bytes, field: &Bytes) -> bool {
         if let Some(mut entry) = self.current_data().get_mut(hash) {
             if let RedisValue::Hash(existing_hash) = entry.value_mut() {
                 existing_hash.hdel(field)
@@ -50,7 +52,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hdel_multiple(&self, hash: &str, fields: &[String]) -> usize {
+    fn hdel_multiple(&self, hash: &Bytes, fields: &[Bytes]) -> usize {
         if let Some(mut entry) = self.current_data().get_mut(hash) {
             if let RedisValue::Hash(existing_hash) = entry.value_mut() {
                 fields
@@ -65,46 +67,46 @@ impl HashOp for Database {
         }
     }
 
-    fn hget_all(&self, hash: &str) -> Result<Vec<String>> {
+    fn hget_all(&self, hash: &Bytes) -> Result<Vec<Bytes>> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
                 RedisValue::Hash(existing_hash) => Ok(existing_hash
                     .flatten()
                     .map(|s| s.clone())
-                    .collect::<Vec<String>>()),
+                    .collect::<Vec<Bytes>>()),
                 _ => Err(CommandError::WrongType),
             },
             None => Ok(Vec::new()), // Empty array for non-existent keys
         }
     }
 
-    fn hkeys(&self, hash: &str) -> Result<Vec<String>> {
+    fn hkeys(&self, hash: &Bytes) -> Result<Vec<Bytes>> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
                 RedisValue::Hash(existing_hash) => Ok(existing_hash
                     .keys()
                     .map(|s| s.clone())
-                    .collect::<Vec<String>>()),
+                    .collect::<Vec<Bytes>>()),
                 _ => Err(CommandError::WrongType),
             },
             None => Ok(Vec::new()), // Empty array for non-existent keys
         }
     }
 
-    fn hvals(&self, hash: &str) -> Result<Vec<String>> {
+    fn hvals(&self, hash: &Bytes) -> Result<Vec<Bytes>> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
                 RedisValue::Hash(existing_hash) => Ok(existing_hash
                     .values()
                     .map(|s| s.clone())
-                    .collect::<Vec<String>>()),
+                    .collect::<Vec<Bytes>>()),
                 _ => Err(CommandError::WrongType),
             },
             None => Ok(Vec::new()), // Empty array for non-existent keys
         }
     }
 
-    fn hlen(&self, hash: &str) -> Result<usize> {
+    fn hlen(&self, hash: &Bytes) -> Result<usize> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
                 RedisValue::Hash(existing_hash) => Ok(existing_hash.len()),
@@ -114,7 +116,7 @@ impl HashOp for Database {
         }
     }
 
-    fn hexists(&self, hash: &str, field: &str) -> Result<bool> {
+    fn hexists(&self, hash: &Bytes, field: &Bytes) -> Result<bool> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
                 RedisValue::Hash(existing_hash) => Ok(existing_hash.hexists(field)),
@@ -124,15 +126,12 @@ impl HashOp for Database {
         }
     }
 
-    fn hincrby(&self, hash: &str, field: &str, value: &str) -> Result<i64> {
+    fn hincrby(&self, hash: &Bytes, field: &Bytes, value: i64) -> Result<i64> {
         let data = self.current_data();
         match data.get_mut(hash) {
             Some(mut entry) => match entry.value_mut() {
-                RedisValue::Hash(existing_hash) => match value.parse::<i64>() {
-                    Ok(integer) => match existing_hash.hincrby(field, integer) {
-                        Ok(result) => Ok(result),
-                        Err(_) => Err(CommandError::InvalidInteger),
-                    },
+                RedisValue::Hash(existing_hash) => match existing_hash.hincrby(field, value) {
+                    Ok(result) => Ok(result),
                     Err(_) => Err(CommandError::InvalidInteger),
                 },
                 _ => Err(CommandError::WrongType),
@@ -140,29 +139,23 @@ impl HashOp for Database {
             None => {
                 // Key doesn't exist, create new hash with field set to value
                 let mut new_hash = RedisHash::new();
-                match value.parse::<i64>() {
-                    Ok(integer) => match new_hash.hincrby(field, integer) {
-                        Ok(result) => {
-                            data.insert(hash.to_string(), RedisValue::Hash(new_hash));
-                            Ok(result)
-                        }
-                        Err(_) => Err(CommandError::InvalidInteger),
-                    },
+                match new_hash.hincrby(field, value) {
+                    Ok(result) => {
+                        data.insert(hash.clone(), RedisValue::Hash(new_hash));
+                        Ok(result)
+                    }
                     Err(_) => Err(CommandError::InvalidInteger),
                 }
             }
         }
     }
 
-    fn hincrbyfloat(&self, hash: &str, field: &str, value: &str) -> Result<f64> {
+    fn hincrbyfloat(&self, hash: &Bytes, field: &Bytes, value: f64) -> Result<f64> {
         let data = self.current_data();
         match data.get_mut(hash) {
             Some(mut entry) => match entry.value_mut() {
-                RedisValue::Hash(existing_hash) => match value.parse::<f64>() {
-                    Ok(float_val) => match existing_hash.hincrbyfloat(field, float_val) {
-                        Ok(result) => Ok(result),
-                        Err(_) => Err(CommandError::InvalidFloat),
-                    },
+                RedisValue::Hash(existing_hash) => match existing_hash.hincrbyfloat(field, value) {
+                    Ok(result) => Ok(result),
                     Err(_) => Err(CommandError::InvalidFloat),
                 },
                 _ => Err(CommandError::WrongType),
@@ -170,14 +163,11 @@ impl HashOp for Database {
             None => {
                 // Key doesn't exist, create new hash with field set to value
                 let mut new_hash = RedisHash::new();
-                match value.parse::<f64>() {
-                    Ok(float_val) => match new_hash.hincrbyfloat(field, float_val) {
-                        Ok(result) => {
-                            data.insert(hash.to_string(), RedisValue::Hash(new_hash));
-                            Ok(result)
-                        }
-                        Err(_) => Err(CommandError::InvalidFloat),
-                    },
+                match new_hash.hincrbyfloat(field, value) {
+                    Ok(result) => {
+                        data.insert(hash.clone(), RedisValue::Hash(new_hash));
+                        Ok(result)
+                    }
                     Err(_) => Err(CommandError::InvalidFloat),
                 }
             }

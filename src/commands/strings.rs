@@ -6,7 +6,8 @@ use crate::{
         },
         SetOptions,
     },
-    database::{KeyOp, SharedDatabase, StringOp},
+    database::traits::{KeyOp, StringOp},
+    database::SharedDatabase,
 };
 use bytes::Bytes;
 

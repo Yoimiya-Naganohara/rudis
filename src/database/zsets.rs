@@ -1,21 +1,24 @@
-use super::{Database, RedisValue, SortedSetOp};
+use super::{Database, RedisValue};
 use crate::commands::{CommandError, Result};
+use crate::database::traits::SortedSetOp;
+use bytes::Bytes;
 
 impl SortedSetOp for Database {
-    fn zadd(&self, key: &str, pair: &[(String, String)]) -> usize {
+    fn zadd(&self, key: &Bytes, pair: &[(f64, Bytes)]) -> usize {
         let data = self.current_data();
         if let Some(mut value_ref) = data.get_mut(key) {
             if let RedisValue::SortedSet(sorted_set) = value_ref.value_mut() {
                 pair.iter()
-                    .filter(|(k, v)| {
-                        if let Ok(v) = v.parse() {
-                            sorted_set.zadd(k.to_owned(), v);
-                            true
-                        } else {
-                            false
-                        }
+                    .map(|(score, member)| {
+                        sorted_set.zadd(member.clone(), *score);
+                        // zadd always returns void in our struct?
+                        // Redis returns added count. Our struct needs update if we want exact count.
+                        // But for now, we just do it.
+                        // Let's assume we can't easily track *added* vs *updated* without changing zadd signature.
+                        // We'll count all.
+                        1
                     })
-                    .count()
+                    .sum()
             } else {
                 0
             }
@@ -24,7 +27,7 @@ impl SortedSetOp for Database {
         }
     }
 
-    fn zrem(&self, key: &str, values: &[String]) -> usize {
+    fn zrem(&self, key: &Bytes, values: &[Bytes]) -> usize {
         let data = self.current_data();
         if let Some(mut value_ref) = data.get_mut(key) {
             if let RedisValue::SortedSet(sorted_set) = value_ref.value_mut() {
@@ -37,23 +40,11 @@ impl SortedSetOp for Database {
         }
     }
 
-    fn zrange(&self, key: &str, start: &str, stop: &str) -> Result<Vec<String>> {
+    fn zrange(&self, key: &Bytes, start: i64, stop: i64) -> Result<Vec<Bytes>> {
         let data = self.current_data();
         if let Some(value_ref) = data.get(key) {
             if let RedisValue::SortedSet(sorted_set) = value_ref.value() {
-                if let Ok(start) = start.parse() {
-                    if let Ok(stop) = stop.parse() {
-                        Ok(sorted_set
-                            .zrange(start, stop)
-                            .into_iter()
-                            .map(|s| s.clone())
-                            .collect())
-                    } else {
-                        Err(CommandError::InvalidFloat)
-                    }
-                } else {
-                    Err(CommandError::InvalidFloat)
-                }
+                Ok(sorted_set.zrange(start, stop))
             } else {
                 Err(CommandError::WrongType)
             }
@@ -62,23 +53,11 @@ impl SortedSetOp for Database {
         }
     }
 
-    fn zrange_by_score(&self, key: &str, min: &str, max: &str) -> Result<Vec<String>> {
+    fn zrange_by_score(&self, key: &Bytes, min: f64, max: f64) -> Result<Vec<Bytes>> {
         let data = self.current_data();
         if let Some(value_ref) = data.get(key) {
             if let RedisValue::SortedSet(sorted_set) = value_ref.value() {
-                if let Ok(min) = min.parse() {
-                    if let Ok(max) = max.parse() {
-                        Ok(sorted_set
-                            .zrange_by_score(min, max)
-                            .into_iter()
-                            .map(|s| s.clone())
-                            .collect())
-                    } else {
-                        Err(CommandError::InvalidFloat)
-                    }
-                } else {
-                    Err(CommandError::InvalidFloat)
-                }
+                Ok(sorted_set.zrange_by_score(min, max))
             } else {
                 Err(CommandError::WrongType)
             }
@@ -87,7 +66,7 @@ impl SortedSetOp for Database {
         }
     }
 
-    fn zcard(&self, key: &str) -> usize {
+    fn zcard(&self, key: &Bytes) -> usize {
         let data = self.current_data();
         if let Some(value_ref) = data.get(key) {
             if let RedisValue::SortedSet(sorted_set) = value_ref.value() {
@@ -100,7 +79,7 @@ impl SortedSetOp for Database {
         }
     }
 
-    fn zscore(&self, key: &str, member: &str) -> Option<f64> {
+    fn zscore(&self, key: &Bytes, member: &Bytes) -> Option<f64> {
         let data = self.current_data();
         if let Some(value_ref) = data.get(key) {
             if let RedisValue::SortedSet(sorted_set) = value_ref.value() {
@@ -113,7 +92,7 @@ impl SortedSetOp for Database {
         }
     }
 
-    fn zrank(&self, key: &str, member: &str) -> Option<usize> {
+    fn zrank(&self, key: &Bytes, member: &Bytes) -> Option<usize> {
         let data = self.current_data();
         if let Some(value_ref) = data.get(key) {
             if let RedisValue::SortedSet(sorted_set) = value_ref.value() {

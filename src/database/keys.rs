@@ -1,30 +1,28 @@
-use super::{Database, KeyOp};
+use super::{Database};
 use crate::commands::{CommandError, Result};
+use crate::database::traits::KeyOp;
+use bytes::Bytes;
 use regex::Regex;
 use std::time::{Duration, SystemTime};
 
 impl KeyOp for Database {
-    fn exist(&self, keys: &[String]) -> usize {
+    fn exist(&self, keys: &[Bytes]) -> usize {
         keys.iter()
             .filter(|key| self.current_data().contains_key(*key))
             .count()
     }
 
-    fn expire(&self, key: &str, seconds: &str) -> Result<()> {
-        if let Ok(secs) = seconds.parse() {
-            if let Some(new_time) = SystemTime::now().checked_add(Duration::from_secs(secs)) {
-                let exp_map = self.current_expiration();
-                exp_map.insert(key.to_owned(), new_time);
-                Ok(())
-            } else {
-                Err(CommandError::InvalidRange)
-            }
+    fn expire(&self, key: &Bytes, seconds: u64) -> Result<()> {
+        if let Some(new_time) = SystemTime::now().checked_add(Duration::from_secs(seconds)) {
+            let exp_map = self.current_expiration();
+            exp_map.insert(key.clone(), new_time);
+            Ok(())
         } else {
-            Err(CommandError::InvalidInteger)
+            Err(CommandError::InvalidRange)
         }
     }
 
-    fn ttl(&self, key: &str) -> i64 {
+    fn ttl(&self, key: &Bytes) -> i64 {
         let exp_map = self.current_expiration();
         if let Some(entry) = exp_map.get(key) {
             if let Ok(duration) = entry.value().duration_since(SystemTime::now()) {
@@ -37,16 +35,28 @@ impl KeyOp for Database {
         }
     }
 
-    fn keys(&self, pattern: &str) -> Result<Vec<String>> {
+    fn keys(&self, pattern: &Bytes) -> Result<Vec<Bytes>> {
         let data = self.current_data();
-        let keys: Vec<String> = data.iter().map(|entry| entry.key().clone()).collect();
-        if pattern == "*" {
+        let keys: Vec<Bytes> = data.iter().map(|entry| entry.key().clone()).collect();
+        // Basic glob matching for *
+        // Ideally use a glob library or regex on String if we assume keys are strings.
+        // Redis keys are binary, so regex is tricky if not UTF-8.
+        // But typical usage assumes UTF-8 compatible patterns.
+        // TODO: Use true glob matcher. For now, assume pattern is UTF-8 regex-like if not "*".
+        if pattern.as_ref() == b"*" {
             Ok(keys)
         } else {
-            // Simple pattern matching with regex
-            let pattern = pattern.replace("*", ".*");
-            match Regex::new(&pattern) {
-                Ok(re) => Ok(keys.into_iter().filter(|k| re.is_match(k)).collect()),
+            // Fallback to converting to string for regex matching (lossy)
+            let pattern_str = String::from_utf8_lossy(pattern);
+            let pattern_str = pattern_str.replace("*", ".*");
+            match Regex::new(&pattern_str) {
+                Ok(re) => Ok(keys
+                    .into_iter()
+                    .filter(|k| {
+                        let ks = String::from_utf8_lossy(k);
+                        re.is_match(&ks)
+                    })
+                    .collect()),
                 Err(_) => Err(CommandError::InvalidPattern),
             }
         }

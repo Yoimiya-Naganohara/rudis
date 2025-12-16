@@ -1,5 +1,6 @@
 use crate::commands::command_helper::{format_array_bytes, format_error, format_integer};
-use crate::database::{SetOp, SharedDatabase};
+use crate::database::traits::SetOp;
+use crate::database::SharedDatabase;
 use bytes::Bytes;
 
 pub fn sadd(db: &SharedDatabase, key: Bytes, values: Vec<Bytes>) -> Bytes {

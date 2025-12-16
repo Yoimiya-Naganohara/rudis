@@ -1,10 +1,12 @@
-use super::{Database, RedisValue, SetOp};
+use super::{Database, RedisValue};
 use crate::commands::{CommandError, Result};
 use crate::data_structures::RedisSet;
+use crate::database::traits::SetOp;
+use bytes::Bytes;
 use std::collections::HashSet;
 
 impl SetOp for Database {
-    fn sadd(&self, key: &str, values: &[String]) -> usize {
+    fn sadd(&self, key: &Bytes, values: &[Bytes]) -> usize {
         let data = self.current_data();
         match data.get_mut(key) {
             Some(mut entry) => {
@@ -25,13 +27,13 @@ impl SetOp for Database {
                     .iter()
                     .filter(|val| new_set.sadd((*val).clone()))
                     .count();
-                data.insert(key.to_string(), RedisValue::Set(new_set));
+                data.insert(key.clone(), RedisValue::Set(new_set));
                 added
             }
         }
     }
 
-    fn srem(&self, key: &str, values: &[String]) -> usize {
+    fn srem(&self, key: &Bytes, values: &[Bytes]) -> usize {
         let data = self.current_data();
         if let Some(mut entry) = data.get_mut(key) {
             if let RedisValue::Set(set) = entry.value_mut() {
@@ -44,7 +46,7 @@ impl SetOp for Database {
         }
     }
 
-    fn smembers(&self, key: &str) -> Result<Vec<String>> {
+    fn smembers(&self, key: &Bytes) -> Result<Vec<Bytes>> {
         if let Some(entry) = self.current_data().get(key) {
             if let RedisValue::Set(set) = entry.value() {
                 Ok(set.smembers().into_iter().map(|s| s.clone()).collect())
@@ -56,7 +58,7 @@ impl SetOp for Database {
         }
     }
 
-    fn scard(&self, key: &str) -> usize {
+    fn scard(&self, key: &Bytes) -> usize {
         if let Some(entry) = self.current_data().get(key) {
             if let RedisValue::Set(set) = entry.value() {
                 set.scard()
@@ -68,7 +70,7 @@ impl SetOp for Database {
         }
     }
 
-    fn sismember(&self, key: &str, member: &str) -> bool {
+    fn sismember(&self, key: &Bytes, member: &Bytes) -> bool {
         if let Some(entry) = self.current_data().get(key) {
             if let RedisValue::Set(set) = entry.value() {
                 set.sismember(member)
@@ -80,7 +82,7 @@ impl SetOp for Database {
         }
     }
 
-    fn sinter(&self, keys: &[String]) -> Result<Vec<String>> {
+    fn sinter(&self, keys: &[Bytes]) -> Result<Vec<Bytes>> {
         let mut res = Vec::new();
         for key in keys {
             if let Some(entry) = self.current_data().get(key) {
@@ -98,7 +100,7 @@ impl SetOp for Database {
         Ok(res)
     }
 
-    fn sunion(&self, keys: &[String]) -> Result<Vec<String>> {
+    fn sunion(&self, keys: &[Bytes]) -> Result<Vec<Bytes>> {
         match self.sinter(keys) {
             Ok(res) => Ok(res
                 .into_iter()
@@ -109,7 +111,7 @@ impl SetOp for Database {
         }
     }
 
-    fn sdiff(&self, keys: &[String]) -> Result<Vec<String>> {
+    fn sdiff(&self, keys: &[Bytes]) -> Result<Vec<Bytes>> {
         match self.smembers(&keys[0]) {
             Ok(res) => {
                 let mut res: HashSet<_> = res.into_iter().collect();

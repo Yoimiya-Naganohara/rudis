@@ -1,5 +1,6 @@
 use crate::commands::command_helper::{format_bulk_string, format_error, format_simple_string};
-use crate::database::{KeyOp, SharedDatabase};
+use crate::database::traits::KeyOp;
+use crate::database::SharedDatabase;
 use bytes::Bytes;
 
 pub fn ping(msg: Option<Bytes>) -> Bytes {
