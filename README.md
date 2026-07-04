@@ -94,17 +94,17 @@ Rudis has been benchmarked using `redis-benchmark` with 500 threads and 5 millio
 
 | Command | Rudis (req/sec) | Rudis (p50 ms) | Redis (req/sec) | Redis (p50 ms) |
 |---------|-----------------|----------------|-----------------|---------------|
-| SET     | 87130.79       | 0.519         | 33222.59       | 1.287        |
-| GET     | 81453.12       | 0.551         | 34518.46       | 1.247        |
-| LPUSH   | 80860.35       | 0.567         | 33134.53       | 1.327        |
-| RPUSH   | 80770.23       | 0.567         | 33123.55       | 1.311        |
-| LPOP    | 80808.08       | 0.559         | 33178.50       | 1.311        |
-| RPOP    | 80757.18       | 0.551         | 33156.50       | 1.319        |
-| HSET    | 79805.91       | 0.567         | 31210.99       | 1.407        |
+| SET     | 87,131         | 0.519         | 85,612         | 0.535        |
+| GET     | 81,453         | 0.551         | 83,135         | 0.551        |
+| LPUSH   | 80,860         | 0.567         | 75,556         | 0.607        |
+| RPUSH   | 80,770         | 0.567         | 77,379         | 0.599        |
+| LPOP    | 80,808         | 0.559         | 76,136         | 0.599        |
+| RPOP    | 80,757         | 0.551         | 77,023         | 0.599        |
+| HSET    | 79,806         | 0.567         | 76,737         | 0.607        |
 
 *Benchmark command: `redis-benchmark -t set,get,hset,hget,lpush,lpop,rpush,rpop -n 5000000 --threads 500 -q`*
 
-*Note: Results may vary based on hardware and configuration. Rudis shows significantly better performance than Redis in this test environment.*
+*Note: Results may vary based on hardware and configuration. Rudis performs comparably to Redis, with slight advantages on write-heavy workloads in this test environment.*
 
 ## Project Structure
 
@@ -130,7 +130,7 @@ Rudis has been benchmarked using `redis-benchmark` with 500 threads and 5 millio
 
 #### `src/networking/`
 - `mod.rs`: TCP networking and Redis protocol handling
-- `resp.rs`: RESP (Redis Serialization Protocol) implementation
+- `resp.rs`: RESP type alias (backed by `redis-protocol` crate)
 
 #### `src/data_structures/`
 - `mod.rs`: Data structure module declarations
