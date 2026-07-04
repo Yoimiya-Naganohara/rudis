@@ -90,19 +90,19 @@ Rudis uses default settings but can be configured via command-line arguments or 
 
 ## Performance
 
-Rudis has been benchmarked using `redis-benchmark` with 500 concurrent threads, 100,000 requests per thread (50 million total operations). Here's a comparison with the official Redis server:
+Rudis has been benchmarked using `redis-benchmark` with 500 threads and 5 million total requests. Here's a comparison with the official Redis server (RDB persistence disabled on both):
 
 | Command | Rudis (req/sec) | Rudis (p50 ms) | Redis (req/sec) | Redis (p50 ms) |
 |---------|-----------------|----------------|-----------------|---------------|
-| SET     | 58004.64       | 0.383         | 33222.59       | 1.287        |
-| GET     | 58377.11       | 0.383         | 34518.46       | 1.247        |
-| LPUSH   | 58445.36       | 0.383         | 33134.53       | 1.327        |
-| RPUSH   | 56657.22       | 0.391         | 33123.55       | 1.311        |
-| LPOP    | 57803.47       | 0.383         | 33178.50       | 1.311        |
-| RPOP    | 57803.47       | 0.383         | 33156.50       | 1.319        |
-| HSET    | 57603.69       | 0.383         | 31210.99       | 1.407        |
+| SET     | 87130.79       | 0.519         | 33222.59       | 1.287        |
+| GET     | 81453.12       | 0.551         | 34518.46       | 1.247        |
+| LPUSH   | 80860.35       | 0.567         | 33134.53       | 1.327        |
+| RPUSH   | 80770.23       | 0.567         | 33123.55       | 1.311        |
+| LPOP    | 80808.08       | 0.559         | 33178.50       | 1.311        |
+| RPOP    | 80757.18       | 0.551         | 33156.50       | 1.319        |
+| HSET    | 79805.91       | 0.567         | 31210.99       | 1.407        |
 
-*Benchmark command: `redis-benchmark -t set,get,hset,hget,lpush,lpop,rpush,rpop -n 100000 --threads 500 -q`*
+*Benchmark command: `redis-benchmark -t set,get,hset,hget,lpush,lpop,rpush,rpop -n 5000000 --threads 500 -q`*
 
 *Note: Results may vary based on hardware and configuration. Rudis shows significantly better performance than Redis in this test environment.*
 
