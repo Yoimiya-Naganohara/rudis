@@ -90,21 +90,46 @@ Rudis uses default settings but can be configured via command-line arguments or 
 
 ## Performance
 
-Rudis has been benchmarked using `redis-benchmark` with 500 threads and 5 million total requests. Here's a comparison with the official Redis server (RDB persistence disabled on both):
+Rudis has been benchmarked against **Valkey 9.0.5** using `valkey-benchmark` on the same machine (16-core i5-13500H, WSL2). Persistence was disabled on both servers (Valkey started with `--save "" --appendonly no`; Rudis persistence is stubbed out). Results depend heavily on the load profile, so three profiles are reported.
 
-| Command | Rudis (req/sec) | Rudis (p50 ms) | Redis (req/sec) | Redis (p50 ms) |
-|---------|-----------------|----------------|-----------------|---------------|
-| SET     | 87,131         | 0.519         | 85,612         | 0.535        |
-| GET     | 81,453         | 0.551         | 83,135         | 0.551        |
-| LPUSH   | 80,860         | 0.567         | 75,556         | 0.607        |
-| RPUSH   | 80,770         | 0.567         | 77,379         | 0.599        |
-| LPOP    | 80,808         | 0.559         | 76,136         | 0.599        |
-| RPOP    | 80,757         | 0.551         | 77,023         | 0.599        |
-| HSET    | 79,806         | 0.567         | 76,737         | 0.607        |
+### Profile 1: high connection concurrency (`--threads 500`, 5M requests per command)
 
-*Benchmark command: `redis-benchmark -t set,get,hset,hget,lpush,lpop,rpush,rpop -n 5000000 --threads 500 -q`*
+| Command | Rudis (req/sec) | Rudis (p50 ms) | Valkey (req/sec) | Valkey (p50 ms) |
+|---------|-----------------|----------------|------------------|-----------------|
+| SET     | 201,499        | 0.207          | 87,923           | 0.527           |
+| GET     | 199,457        | 0.215          | 89,524           | 0.519           |
+| LPUSH   | 214,445        | 0.199          | 86,414           | 0.543           |
+| RPUSH   | 207,779        | 0.199          | 88,726           | 0.527           |
+| LPOP    | 216,816        | 0.191          | 89,526           | 0.527           |
+| RPOP    | 223,984        | 0.191          | 90,779           | 0.527           |
+| HSET    | 226,665        | 0.191          | 89,923           | 0.527           |
 
-*Note: Results may vary based on hardware and configuration. Rudis performs comparably to Redis, with slight advantages on write-heavy workloads in this test environment.*
+*Command: `valkey-benchmark -t set,get,hset,hget,lpush,lpop,rpush,rpop -n 5000000 --threads 500 -q`*
+
+### Profile 2: steady load, 50 connections (`-c 50`, 1M requests per command)
+
+| Command | Rudis (req/sec) | Rudis (p50 ms) | Valkey (req/sec) | Valkey (p50 ms) |
+|---------|-----------------|----------------|------------------|-----------------|
+| SET     | 253,678        | 0.111          | 227,376          | 0.111           |
+| GET     | 248,200        | 0.111          | 220,946          | 0.119           |
+
+### Profile 3: pipelined (`-c 50 -P 100`, 2M requests per command)
+
+| Command | Rudis (req/sec) | Rudis (p50 ms) | Valkey (req/sec) | Valkey (p50 ms) |
+|---------|-----------------|----------------|------------------|-----------------|
+| SET     | 112,752        | 0.695          | 2,234,637        | 2.103           |
+| GET     | 112,822        | 1.087          | 3,039,514        | 1.527           |
+
+*Command: `valkey-benchmark -t set,get -n 2000000 -c 50 -P 100 -q`*
+
+### Interpretation
+
+- **Rudis wins under high connection concurrency** (Tokio multi-threaded runtime vs. Valkey's single-threaded event loop), but by a much smaller margin (roughly 10%) under steady low-connection load.
+- **Rudis is far slower under pipelining** (about 20x): each pipelined request is processed sequentially and the per-request cost grows with batch size. The root cause is the networking loop in `src/networking/mod.rs`, which copies the whole receive buffer (`Bytes::copy_from_slice`) for every decoded frame (O(n^2) total work) and issues a separate `write_all` syscall per reply.
+
+*Notes:*
+- *HGET is omitted: the `hget` test in valkey-benchmark 9.0.5 silently produces no results on any server (verified against both Rudis and Valkey).*
+- *Results may vary based on hardware and configuration.*
 
 ## Project Structure
 
