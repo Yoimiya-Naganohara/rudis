@@ -5,7 +5,7 @@ use bytes::Bytes;
 use rudis::commands::CommandError;
 use rudis::data_structures::{RedisHash, RedisList, RedisSet, RedisSortedSet, RedisString};
 use rudis::database::{
-    traits::{HashOp, SetOp, StringOp},
+    traits::{HashOp, SetOp, SortedSetOp, StringOp},
     Database,
 };
 
@@ -248,6 +248,97 @@ fn test_database_type_conflicts() {
     if let Err(msg) = db.hget_all(&Bytes::from("mykey")) {
         assert_eq!(msg, CommandError::WrongType);
     }
+}
+
+#[test]
+fn test_redis_zset_operations() {
+    let mut zset = RedisSortedSet::new();
+
+    // zadd on new members returns 1
+    assert_eq!(zset.zadd(Bytes::from("a"), 1.0), 1);
+    assert_eq!(zset.zadd(Bytes::from("b"), 2.0), 1);
+    assert_eq!(zset.zadd(Bytes::from("c"), 3.0), 1);
+
+    // zadd on existing member returns 0 (score update)
+    assert_eq!(zset.zadd(Bytes::from("b"), 2.5), 0);
+
+    // zscore
+    assert_eq!(zset.zscore(&Bytes::from("b")), Some(2.5));
+    assert_eq!(zset.zscore(&Bytes::from("missing")), None);
+
+    // zcard
+    assert_eq!(zset.zcard(), 3);
+
+    // zrange is ordered by score, ties broken by member bytes
+    assert_eq!(
+        zset.zrange(0, -1),
+        vec![Bytes::from("a"), Bytes::from("b"), Bytes::from("c")]
+    );
+    assert_eq!(zset.zrange(1, 1), vec![Bytes::from("b")]);
+    assert_eq!(zset.zrange(5, 10), Vec::<Bytes>::new());
+
+    // zrank
+    assert_eq!(zset.zrank(&Bytes::from("a")), Some(0));
+    assert_eq!(zset.zrank(&Bytes::from("missing")), None);
+
+    // zrem
+    assert!(zset.zrem(&Bytes::from("b")));
+    assert!(!zset.zrem(&Bytes::from("b")));
+    assert_eq!(zset.zcard(), 2);
+
+    // range by score
+    assert_eq!(zset.zrange_by_score(2.0, 3.0), vec![Bytes::from("c")]);
+    assert_eq!(zset.zrange_by_score(1.0, 1.0), vec![Bytes::from("a")]);
+
+    // Members sharing the max score must all be returned even when their
+    // bytes sort above the old fixed upper bound
+    zset.zadd(Bytes::from(vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF]), 3.0);
+    zset.zadd(Bytes::from("d"), 3.0);
+    assert_eq!(
+        zset.zrange_by_score(1.0, 3.0),
+        vec![
+            Bytes::from("a"),
+            Bytes::from("c"),
+            Bytes::from("d"),
+            Bytes::from(vec![0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
+        ]
+    );
+}
+
+#[test]
+fn test_database_zset_operations() {
+    let mut db = Database::new(16);
+
+    // zadd new members
+    assert_eq!(
+        db.zadd(
+            &Bytes::from("z"),
+            &[(1.0, Bytes::from("a")), (2.0, Bytes::from("b"))]
+        ),
+        2
+    );
+    // Updating an existing member does not count towards the return value
+    assert_eq!(db.zadd(&Bytes::from("z"), &[(1.5, Bytes::from("a"))]), 0);
+
+    assert_eq!(db.zcard(&Bytes::from("z")), 2);
+    assert_eq!(db.zscore(&Bytes::from("z"), &Bytes::from("a")), Some(1.5));
+
+    // zrange in score order
+    assert_eq!(
+        db.zrange(&Bytes::from("z"), 0, -1).unwrap(),
+        vec![Bytes::from("a"), Bytes::from("b")]
+    );
+
+    // zrem
+    assert_eq!(db.zrem(&Bytes::from("z"), &[Bytes::from("a")]), 1);
+    assert_eq!(db.zcard(&Bytes::from("z")), 1);
+
+    // Type conflict
+    db.set(&Bytes::from("notazset"), Bytes::from("string"));
+    assert_eq!(
+        db.zrange(&Bytes::from("notazset"), 0, -1).unwrap_err(),
+        CommandError::WrongType
+    );
 }
 
 #[test]

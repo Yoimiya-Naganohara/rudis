@@ -103,7 +103,7 @@ pub fn parse_key_pair_values_command(
 ) -> Option<(Bytes, Vec<(Bytes, Bytes)>)> {
     // key + 2n pair elements after the command name, so the total element
     // count is always even (name + key + 2n)
-    if elements.len() >= min_required_len && elements.len() % 2 == 0 {
+    if elements.len() >= min_required_len && elements.len().is_multiple_of(2) {
         let key = extract_bulk_string(&elements[1])?;
         let pairs = extract_key_value_strings(&elements[2..])?;
         Some((key, pairs))
@@ -182,7 +182,6 @@ pub fn parse_key_ord_pivot_value_command(
 pub fn extract_key_value_strings(elements: &[RespValue]) -> Option<Vec<(Bytes, Bytes)>> {
     elements
         .chunks(2)
-        .into_iter()
         .map(|value| {
             if value.len() == 2 {
                 // Adapt to Frame variants
@@ -220,7 +219,10 @@ pub fn format_array_bytes(out: &mut BytesMut, elements: Vec<Bytes>) {
 }
 
 pub fn format_error(out: &mut BytesMut, error: impl std::fmt::Display) {
-    let _ = write!(out, "-ERR {}\r\n", error);
+    // The Display impl of CommandError (and the error string literals)
+    // already carries the leading "ERR ", so only the "-" prefix is added
+    // here to form a RESP error reply.
+    let _ = write!(out, "-{error}\r\n");
 }
 
 pub fn format_bulk_string(out: &mut BytesMut, value: &Bytes) {

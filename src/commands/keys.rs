@@ -34,7 +34,7 @@ pub fn ttl(db: &SharedDatabase, key: Bytes, out: &mut BytesMut) {
 
 pub fn type_(db: &SharedDatabase, key: Bytes, out: &mut BytesMut) {
     // db.data_type now accepts &Bytes
-    format_simple_string(out, &db.data_type(&key))
+    format_simple_string(out, db.data_type(&key))
 }
 
 pub fn keys(db: &SharedDatabase, pattern: Bytes, out: &mut BytesMut) {

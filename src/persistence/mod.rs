@@ -5,6 +5,12 @@ pub struct Persistence {
     // TODO: Add persistence fields
 }
 
+impl Default for Persistence {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Persistence {
     pub fn new() -> Self {
         Persistence {}

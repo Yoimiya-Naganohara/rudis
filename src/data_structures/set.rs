@@ -7,6 +7,12 @@ pub struct RedisSet {
     members: HashSet<Bytes>,
 }
 
+impl Default for RedisSet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RedisSet {
     pub fn new() -> Self {
         RedisSet {

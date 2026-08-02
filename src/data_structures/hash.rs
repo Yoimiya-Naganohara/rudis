@@ -8,6 +8,12 @@ pub struct RedisHash {
     fields: HashMap<Bytes, Bytes>,
 }
 
+impl Default for RedisHash {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RedisHash {
     pub fn new() -> Self {
         RedisHash {

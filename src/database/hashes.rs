@@ -33,7 +33,7 @@ impl HashOp for Database {
     fn hget(&self, hash: &Bytes, field: &Bytes) -> Result<Option<Bytes>> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
-                RedisValue::Hash(existing_hash) => Ok(existing_hash.hget(field).map(|s| s.clone())),
+                RedisValue::Hash(existing_hash) => Ok(existing_hash.hget(field).cloned()),
                 _ => Err(CommandError::WrongType),
             },
             None => Ok(None),
@@ -71,8 +71,7 @@ impl HashOp for Database {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
                 RedisValue::Hash(existing_hash) => Ok(existing_hash
-                    .flatten()
-                    .map(|s| s.clone())
+                    .flatten().cloned()
                     .collect::<Vec<Bytes>>()),
                 _ => Err(CommandError::WrongType),
             },
@@ -84,8 +83,7 @@ impl HashOp for Database {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
                 RedisValue::Hash(existing_hash) => Ok(existing_hash
-                    .keys()
-                    .map(|s| s.clone())
+                    .keys().cloned()
                     .collect::<Vec<Bytes>>()),
                 _ => Err(CommandError::WrongType),
             },
@@ -97,8 +95,7 @@ impl HashOp for Database {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
                 RedisValue::Hash(existing_hash) => Ok(existing_hash
-                    .values()
-                    .map(|s| s.clone())
+                    .values().cloned()
                     .collect::<Vec<Bytes>>()),
                 _ => Err(CommandError::WrongType),
             },

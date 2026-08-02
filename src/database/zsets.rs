@@ -1,29 +1,30 @@
 use super::{Database, RedisValue};
 use crate::commands::{CommandError, Result};
+use crate::data_structures::RedisSortedSet;
 use crate::database::traits::SortedSetOp;
 use bytes::Bytes;
 
 impl SortedSetOp for Database {
     fn zadd(&self, key: &Bytes, pair: &[(f64, Bytes)]) -> usize {
         let data = self.current_data();
-        if let Some(mut value_ref) = data.get_mut(key) {
-            if let RedisValue::SortedSet(sorted_set) = value_ref.value_mut() {
-                pair.iter()
-                    .map(|(score, member)| {
-                        sorted_set.zadd(member.clone(), *score);
-                        // zadd always returns void in our struct?
-                        // Redis returns added count. Our struct needs update if we want exact count.
-                        // But for now, we just do it.
-                        // Let's assume we can't easily track *added* vs *updated* without changing zadd signature.
-                        // We'll count all.
-                        1
-                    })
-                    .sum()
-            } else {
-                0
+        match data.get_mut(key) {
+            Some(mut entry) => match entry.value_mut() {
+                RedisValue::SortedSet(sorted_set) => pair
+                    .iter()
+                    .map(|(score, member)| sorted_set.zadd(member.clone(), *score))
+                    .sum(),
+                _ => 0,
+            },
+            None => {
+                // Key doesn't exist, create a new sorted set
+                let mut new_set = RedisSortedSet::new();
+                let added = pair
+                    .iter()
+                    .map(|(score, member)| new_set.zadd(member.clone(), *score))
+                    .sum();
+                data.insert(key.clone(), RedisValue::SortedSet(new_set));
+                added
             }
-        } else {
-            0
         }
     }
 

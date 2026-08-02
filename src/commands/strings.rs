@@ -28,19 +28,17 @@ pub fn set(
     // Check options
     if let Some(opts) = options {
         // Handle NX: set only if not exists
-        if opts.nx {
-            if db.get(&key).is_some() {
+        if opts.nx
+            && db.get(&key).is_some() {
                 format_null(out);
                 return;
             }
-        }
         // Handle XX: set only if exists
-        if opts.xx {
-            if db.get(&key).is_none() {
+        if opts.xx
+            && db.get(&key).is_none() {
                 format_null(out);
                 return;
             }
-        }
 
         // Value must be set before expiration
         // But wait, if we set then fail expiration?

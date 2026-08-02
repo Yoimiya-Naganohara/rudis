@@ -17,8 +17,9 @@ pub fn zadd(db: &SharedDatabase, key: Bytes, pairs: Vec<(Bytes, Bytes)>, out: &m
             }
         };
         match score_str.parse::<f64>() {
-            Ok(score) => parsed_pairs.push((score, member)),
-            Err(_) => {
+            // Redis rejects NaN and infinity scores
+            Ok(score) if score.is_finite() => parsed_pairs.push((score, member)),
+            Ok(_) | Err(_) => {
                 format_error(out, crate::commands::CommandError::InvalidFloat);
                 return;
             }

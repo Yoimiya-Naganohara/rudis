@@ -87,7 +87,7 @@ impl ListOp for Database {
     fn lindex(&self, key: &Bytes, index: i64) -> Option<Bytes> {
         if let Some(entry) = self.current_data().get(key) {
             if let RedisValue::List(list) = entry.value() {
-                list.index(index).map(|s| s.clone())
+                list.index(index).cloned()
             } else {
                 None
             }

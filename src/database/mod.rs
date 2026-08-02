@@ -5,11 +5,8 @@ use crate::commands::{CommandError, Result};
 use crate::data_structures::{RedisHash, RedisList, RedisSet, RedisSortedSet, RedisString};
 use bytes::Bytes;
 use dashmap::DashMap;
-use parking_lot::Mutex;
-use regex::Regex;
-use std::collections::HashSet;
 use std::sync::atomic::AtomicU8;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use std::{collections::HashMap, sync::Arc};
 
 // Type definitions

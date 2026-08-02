@@ -3,7 +3,6 @@
 pub mod resp;
 use crate::commands::{command_helper::format_error, Command};
 use crate::database::SharedDatabase;
-use bytes::BytesMut;
 use std::{io, net::SocketAddr};
 use tokio::{
     io::AsyncWriteExt,
@@ -71,7 +70,7 @@ impl Networking {
                                     writer.write_all(&responses).await?;
                                     return Ok(());
                                 }
-                                cmd.execute(&db, &mut responses).await;
+                                cmd.execute(db, &mut responses).await;
                             }
                             None => format_error(
                                 &mut responses,

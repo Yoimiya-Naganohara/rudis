@@ -8,6 +8,12 @@ pub struct RedisList {
     items: VecDeque<Bytes>,
 }
 
+impl Default for RedisList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RedisList {
     pub fn new() -> Self {
         RedisList {

@@ -16,7 +16,7 @@ pub struct Server {
 
 impl Server {
     pub async fn new(config: Config) -> Result<Self> {
-        let networking = Networking::new(&format!("{}:{}", &config.host, &config.port))
+        let networking = Networking::new(&format!("{}:{}", config.host, config.port))
             .await
             .map_err(AppError::Io)?;
 

@@ -87,6 +87,7 @@ pub enum CommandError {
 
 impl CommandError {
     pub fn to_redis_error(&self) -> String {
-        format!("-ERR {}\r\n", self)
+        // Display already carries the leading "ERR "
+        format!("-{}\r\n", self)
     }
 }

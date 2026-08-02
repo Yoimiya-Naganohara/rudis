@@ -49,7 +49,7 @@ impl SetOp for Database {
     fn smembers(&self, key: &Bytes) -> Result<Vec<Bytes>> {
         if let Some(entry) = self.current_data().get(key) {
             if let RedisValue::Set(set) = entry.value() {
-                Ok(set.smembers().into_iter().map(|s| s.clone()).collect())
+                Ok(set.smembers().into_iter().cloned().collect())
             } else {
                 Err(CommandError::WrongType)
             }
