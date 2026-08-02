@@ -1,6 +1,6 @@
 # Rudis - A Redis-like Server in Rust
 
-[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.80%2B-orange)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![CI](https://github.com/Yoimiya-Naganohara/rudis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yoimiya-Naganohara/rudis/actions/workflows/ci.yml)
 
@@ -9,9 +9,9 @@ Rudis is a high-performance, Redis-compatible server implementation written in R
 ## Features
 
 - **Redis Protocol Compatibility**: Supports core Redis commands and data structures
-- **High Performance**: Leverages Rust's zero-cost abstractions for optimal speed
+- **High Performance**: Multi-threaded Tokio runtime with zero-copy RESP decoding and allocation-free response formatting
 - **Memory Safe**: Prevents common memory errors through Rust's type system
-- **Concurrent**: Handles multiple client connections efficiently
+- **Concurrent**: DashMap-sharded data store with per-shard locking for concurrent reads and writes
 - **Persistence**: Supports RDB snapshots for data durability
 - **Data Structures**: Implements strings, lists, hashes, sets, and sorted sets
 - **Extensible**: Modular architecture for easy addition of new features
@@ -20,26 +20,32 @@ Rudis is a high-performance, Redis-compatible server implementation written in R
 
 Rudis implements a subset of Redis commands, including:
 
+### Connection
+- `PING`, `QUIT`, `ECHO`, `AUTH`, `SELECT`, `INFO`
+
 ### Strings
-- `SET`, `GET`, `MSET`, `MGET`, `INCR`, `DECR`, `INCRBY`, `DECRBY`
+- `SET`, `GET`, `SETNX`, `SETEX`, `GETSET`, `MSET`, `MGET`, `INCR`, `DECR`, `INCRBY`, `DECRBY`, `APPEND`, `STRLEN`, `DEL`
 
 ### Hashes
-- `HSET`, `HGET`, `HGETALL`, `HDEL`, `HKEYS`, `HVALS`, `HLEN`
+- `HSET`, `HGET`, `HGETALL`, `HDEL`, `HKEYS`, `HVALS`, `HLEN`, `HEXISTS`, `HINCRBY`, `HINCRBYFLOAT`
 
 ### Lists
-- `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LLEN`, `LINDEX`, `LRANGE`
+- `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LLEN`, `LINDEX`, `LRANGE`, `LTRIM`, `LSET`, `LINSERT`
 
 ### Sets
-- `SADD`, `SMEMBERS`, `SREM`, `SCARD`
+- `SADD`, `SREM`, `SMEMBERS`, `SCARD`, `SISMEMBER`, `SINTER`, `SUNION`, `SDIFF`
 
 ### Sorted Sets
-- `ZADD`, `ZRANGE`, `ZREM`, `ZCARD`
+- `ZADD`, `ZRANGE`, `ZRANGEBYSCORE`, `ZREM`, `ZCARD`, `ZSCORE`, `ZRANK`
+
+### Keys
+- `EXISTS`, `EXPIRE`, `TTL`, `TYPE`, `KEYS`, `FLUSHALL`, `FLUSHDB`
 
 *Note: Not all Redis commands are implemented yet. Check [TODO.md](TODO.md) for planned additions.*
 
 ## Prerequisites
 
-- Rust 1.70 or later
+- Rust 1.80 or later
 - Cargo (comes with Rust)
 
 ## Installation
@@ -86,50 +92,46 @@ LPOP mylist
 
 ### Configuration
 
-Rudis uses default settings but can be configured via command-line arguments or environment variables. Check `src/main.rs` for available options.
+The server binds to `127.0.0.1:6379` with 16 databases by default. Configuration is hard-coded in `src/config/mod.rs` (config-file loading is on the roadmap, see [TODO.md](TODO.md)).
 
 ## Performance
 
-Rudis has been benchmarked against **Valkey 9.0.5** using `valkey-benchmark` on the same machine (16-core i5-13500H, WSL2). Persistence was disabled on both servers (Valkey started with `--save "" --appendonly no`; Rudis persistence is stubbed out). Results depend heavily on the load profile, so three profiles are reported.
+Rudis is benchmarked against **Valkey 9.0.5** on the same machine (16-core, WSL2) with persistence disabled on both servers. Two clients are used:
 
-### Profile 1: high connection concurrency (`--threads 500`, 5M requests per command)
+- **`bench_client`** (in `examples/`): an independent Tokio load client with real TCP connections and RESP pipelining (`cargo run --release --example bench_client -- <addr> <conns> <pipeline> <total> <get|set|hset>`).
+- `valkey-benchmark` (cross-checked: its numbers match `bench_client` for Valkey within ~3%, but it **underreports Rudis** because its single-threaded client caps out around 9M req/s — below what Rudis can serve).
 
-| Command | Rudis (req/sec) | Rudis (p50 ms) | Valkey (req/sec) | Valkey (p50 ms) |
-|---------|-----------------|----------------|------------------|-----------------|
-| SET     | 201,499        | 0.207          | 87,923           | 0.527           |
-| GET     | 199,457        | 0.215          | 89,524           | 0.519           |
-| LPUSH   | 214,445        | 0.199          | 86,414           | 0.543           |
-| RPUSH   | 207,779        | 0.199          | 88,726           | 0.527           |
-| LPOP    | 216,816        | 0.191          | 89,526           | 0.527           |
-| RPOP    | 223,984        | 0.191          | 90,779           | 0.527           |
-| HSET    | 226,665        | 0.191          | 89,923           | 0.527           |
+Numbers below are single runs of `bench_client`, 1M requests per command, fixed key per connection (valkey-benchmark random-key results for Rudis are client-bound and not representative).
 
-*Command: `valkey-benchmark -t set,get,hset,hget,lpush,lpop,rpush,rpop -n 5000000 --threads 500 -q`*
+### Deep pipelining (`-c 50 -P 100` and `-c 100 -P 200` equivalents)
 
-### Profile 2: steady load, 50 connections (`-c 50`, 1M requests per command)
+| Command | Rudis (req/sec) | Valkey (req/sec) | Delta |
+|---------|-----------------|------------------|-------|
+| GET (50x100)   | 13,200,000 | 2,960,000 | +346% |
+| GET (100x200)  | 21,600,000 | 2,920,000 | +640% |
+| SET (50x100)   | 13,500,000 | 2,130,000 | +534% |
+| SET (100x200)  | 17,900,000 | 2,270,000 | +688% |
+| HSET (50x100)  | 11,900,000 | 2,130,000 | +558% |
 
-| Command | Rudis (req/sec) | Rudis (p50 ms) | Valkey (req/sec) | Valkey (p50 ms) |
-|---------|-----------------|----------------|------------------|-----------------|
-| SET     | 253,678        | 0.111          | 227,376          | 0.111           |
-| GET     | 248,200        | 0.111          | 220,946          | 0.119           |
+### Low concurrency (500K requests per command)
 
-### Profile 3: pipelined (`-c 50 -P 100`, 2M requests per command)
-
-| Command | Rudis (req/sec) | Rudis (p50 ms) | Valkey (req/sec) | Valkey (p50 ms) |
-|---------|-----------------|----------------|------------------|-----------------|
-| SET     | 112,752        | 0.695          | 2,234,637        | 2.103           |
-| GET     | 112,822        | 1.087          | 3,039,514        | 1.527           |
-
-*Command: `valkey-benchmark -t set,get -n 2000000 -c 50 -P 100 -q`*
+| Config     | GET (Rudis/Valkey) |
+|------------|--------------------|
+| `1x500`    | 2.53M / 2.17M     |
+| `16x16`    | 3.53M / 1.83M     |
 
 ### Interpretation
 
-- **Rudis wins under high connection concurrency** (Tokio multi-threaded runtime vs. Valkey's single-threaded event loop), but by a much smaller margin (roughly 10%) under steady low-connection load.
-- **Rudis is far slower under pipelining** (about 20x): each pipelined request is processed sequentially and the per-request cost grows with batch size. The root cause is the networking loop in `src/networking/mod.rs`, which copies the whole receive buffer (`Bytes::copy_from_slice`) for every decoded frame (O(n^2) total work) and issues a separate `write_all` syscall per reply.
+- **Rudis scales with connection count** (2.5M single-connection up to 21.6M at 100 connections x 200 pipeline) thanks to the multi-threaded Tokio runtime and DashMap-sharded data store; **Valkey's single-threaded event loop tops out at 2-3M** regardless of load.
+- At a single connection both servers are close (pipeline round-trip bound).
+- valkey-benchmark data published in earlier revisions of this README understated Rudis (client bottleneck); the `bench_client` numbers above are the authoritative ones.
 
-*Notes:*
-- *HGET is omitted: the `hget` test in valkey-benchmark 9.0.5 silently produces no results on any server (verified against both Rudis and Valkey).*
-- *Results may vary based on hardware and configuration.*
+### Implementation notes
+
+- Zero-copy RESP decoding via `redis-protocol`'s `decode-mut` feature (bulk strings are refcounted slices, no per-frame copying)
+- Response formatting writes directly into the connection's output buffer (no intermediate allocations)
+- `AtomicU8` database index instead of a global mutex
+- Single-lookup hash inserts via `HashMap::entry`
 
 ## Project Structure
 
