@@ -25,6 +25,7 @@ regex = "1.11.3"
 dashmap = "6.1"
 parking_lot = "0.12"
 shared-string = "0.1.7"
+mimalloc = "0.1"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
@@ -32,7 +33,7 @@ tempfile = "3.0"
 proptest = "1.0"
 
 [profile.release]
-lto = "fat"
+lto = "thin"
 codegen-units = 1
 panic = "abort"
 

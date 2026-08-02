@@ -1,6 +1,9 @@
 use std::process;
 use tracing::{error, info};
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 mod commands;
 mod config;
 mod data_structures;
