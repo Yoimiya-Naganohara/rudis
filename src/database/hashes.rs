@@ -70,9 +70,9 @@ impl HashOp for Database {
     fn hget_all(&self, hash: &Bytes) -> Result<Vec<Bytes>> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
-                RedisValue::Hash(existing_hash) => Ok(existing_hash
-                    .flatten().cloned()
-                    .collect::<Vec<Bytes>>()),
+                RedisValue::Hash(existing_hash) => {
+                    Ok(existing_hash.flatten().cloned().collect::<Vec<Bytes>>())
+                }
                 _ => Err(CommandError::WrongType),
             },
             None => Ok(Vec::new()), // Empty array for non-existent keys
@@ -82,9 +82,9 @@ impl HashOp for Database {
     fn hkeys(&self, hash: &Bytes) -> Result<Vec<Bytes>> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
-                RedisValue::Hash(existing_hash) => Ok(existing_hash
-                    .keys().cloned()
-                    .collect::<Vec<Bytes>>()),
+                RedisValue::Hash(existing_hash) => {
+                    Ok(existing_hash.keys().cloned().collect::<Vec<Bytes>>())
+                }
                 _ => Err(CommandError::WrongType),
             },
             None => Ok(Vec::new()), // Empty array for non-existent keys
@@ -94,9 +94,9 @@ impl HashOp for Database {
     fn hvals(&self, hash: &Bytes) -> Result<Vec<Bytes>> {
         match self.current_data().get(hash) {
             Some(entry) => match entry.value() {
-                RedisValue::Hash(existing_hash) => Ok(existing_hash
-                    .values().cloned()
-                    .collect::<Vec<Bytes>>()),
+                RedisValue::Hash(existing_hash) => {
+                    Ok(existing_hash.values().cloned().collect::<Vec<Bytes>>())
+                }
                 _ => Err(CommandError::WrongType),
             },
             None => Ok(Vec::new()), // Empty array for non-existent keys

@@ -1,7 +1,7 @@
 // Hash data structure for Rudis
 
 use bytes::Bytes;
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 
 #[derive(Debug)]
 pub struct RedisHash {
@@ -22,12 +22,16 @@ impl RedisHash {
     }
 
     pub fn hset(&mut self, field: Bytes, value: Bytes) -> i64 {
-        let is_new = !self.fields.contains_key(&field);
-        self.fields.insert(field, value);
-        if is_new {
-            1
-        } else {
-            0
+        // Single lookup: insert replaces an existing value in place
+        match self.fields.entry(field) {
+            Entry::Occupied(mut entry) => {
+                entry.insert(value);
+                0
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(value);
+                1
+            }
         }
     }
 
