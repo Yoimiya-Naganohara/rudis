@@ -3,7 +3,7 @@
 pub mod resp;
 use crate::commands::{command_helper::format_error, Command};
 use crate::database::SharedDatabase;
-use bytes::Buf;
+use bytes::BytesMut;
 use std::{io, net::SocketAddr};
 use tokio::{
     io::AsyncWriteExt,
@@ -37,6 +37,7 @@ impl Networking {
         db: &SharedDatabase,
     ) -> tokio::io::Result<()> {
         use bytes::BytesMut;
+        use redis_protocol::resp2::decode::decode_mut;
         use tokio::io::AsyncReadExt;
 
         // Flush buffered replies once they exceed this size to bound memory
@@ -56,40 +57,33 @@ impl Networking {
                 break;
             }
 
-            // Detach the received bytes as an immutable view (O(1)) and decode
-            // every complete frame, advancing through the buffer without copying
-            // it per frame. An incomplete trailing frame is moved back into
-            // `buffer` for the next read.
-            let mut data = buffer.freeze();
+            // Zero-copy decode: `decode_mut` parses one frame at a time and
+            // splits the consumed bytes off `buffer` (O(1)); bulk strings are
+            // returned as refcounted slices of the same allocation, so no
+            // copying per frame. On an incomplete frame the buffer is left
+            // untouched and the loop exits to wait for more data.
             loop {
-                match redis_protocol::resp2::decode::decode(&data) {
-                    Ok(Some((frame, consumed))) => {
-                        data.advance(consumed);
-
-                        let response = match Command::parse(&frame) {
+                match decode_mut(&mut buffer) {
+                    Ok(Some((frame, _consumed, _frozen))) => {
+                        match Command::parse(&frame) {
                             Some(cmd) => {
                                 if cmd == Command::Quit {
                                     writer.write_all(&responses).await?;
                                     return Ok(());
                                 }
-                                cmd.execute(&db).await
+                                cmd.execute(&db, &mut responses).await;
                             }
-                            None => format_error(crate::commands::CommandError::UnknownCommand),
-                        };
-                        responses.extend_from_slice(&response);
+                            None => format_error(
+                                &mut responses,
+                                crate::commands::CommandError::UnknownCommand,
+                            ),
+                        }
                         if responses.len() >= RESPONSE_FLUSH_THRESHOLD {
                             writer.write_all(&responses).await?;
                             responses.clear();
                         }
                     }
-                    Ok(None) => {
-                        // Incomplete frame, keep the leftover for the next read
-                        buffer = match data.try_into_mut() {
-                            Ok(mut_buf) => mut_buf,
-                            Err(shared) => BytesMut::from(&shared[..]),
-                        };
-                        break;
-                    }
+                    Ok(None) => break, // Incomplete frame, keep the leftover for the next read
                     Err(_e) => {
                         // Protocol error
                         // eprintln!("Protocol error: {:?}", e);

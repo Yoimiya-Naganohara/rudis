@@ -4,106 +4,131 @@ use crate::commands::command_helper::{
 };
 use crate::database::traits::ListOp;
 use crate::database::SharedDatabase;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 
-pub fn lpush(db: &SharedDatabase, key: Bytes, values: Vec<Bytes>) -> Bytes {
-    format_integer(db.lpush(&key, &values) as i64)
+pub fn lpush(db: &SharedDatabase, key: Bytes, values: Vec<Bytes>, out: &mut BytesMut) {
+    format_integer(out, db.lpush(&key, &values) as i64)
 }
 
-pub fn rpush(db: &SharedDatabase, key: Bytes, values: Vec<Bytes>) -> Bytes {
-    format_integer(db.rpush(&key, &values) as i64)
+pub fn rpush(db: &SharedDatabase, key: Bytes, values: Vec<Bytes>, out: &mut BytesMut) {
+    format_integer(out, db.rpush(&key, &values) as i64)
 }
 
-pub fn lpop(db: &SharedDatabase, key: Bytes) -> Bytes {
+pub fn lpop(db: &SharedDatabase, key: Bytes, out: &mut BytesMut) {
     match db.lpop(&key) {
-        Some(result) => format_bulk_string(&result),
-        None => format_null(),
+        Some(result) => format_bulk_string(out, &result),
+        None => format_null(out),
     }
 }
 
-pub fn rpop(db: &SharedDatabase, key: Bytes) -> Bytes {
+pub fn rpop(db: &SharedDatabase, key: Bytes, out: &mut BytesMut) {
     match db.rpop(&key) {
-        Some(result) => format_bulk_string(&result),
-        None => format_null(),
+        Some(result) => format_bulk_string(out, &result),
+        None => format_null(out),
     }
 }
 
-pub fn llen(db: &SharedDatabase, key: Bytes) -> Bytes {
-    format_integer(db.llen(&key) as i64)
+pub fn llen(db: &SharedDatabase, key: Bytes, out: &mut BytesMut) {
+    format_integer(out, db.llen(&key) as i64)
 }
 
-pub fn lindex(db: &SharedDatabase, key: Bytes, index: Bytes) -> Bytes {
+pub fn lindex(db: &SharedDatabase, key: Bytes, index: Bytes, out: &mut BytesMut) {
     // Parse index
     let index_str = match std::str::from_utf8(&index) {
         Ok(s) => s,
-        Err(_) => return format_error(crate::commands::CommandError::InvalidInteger),
+        Err(_) => {
+            format_error(out, crate::commands::CommandError::InvalidInteger);
+            return;
+        }
     };
     match index_str.parse::<i64>() {
         Ok(idx) => match db.lindex(&key, idx) {
-            Some(val) => format_bulk_string(&val),
-            None => format_null(),
+            Some(val) => format_bulk_string(out, &val),
+            None => format_null(out),
         },
-        Err(_) => format_error(crate::commands::CommandError::InvalidInteger),
+        Err(_) => format_error(out, crate::commands::CommandError::InvalidInteger),
     }
 }
 
-pub fn lrange(db: &SharedDatabase, key: Bytes, start: Bytes, end: Bytes) -> Bytes {
+pub fn lrange(db: &SharedDatabase, key: Bytes, start: Bytes, end: Bytes, out: &mut BytesMut) {
     let start_str = match std::str::from_utf8(&start) {
         Ok(s) => s,
-        Err(_) => return format_error(crate::commands::CommandError::InvalidInteger),
+        Err(_) => {
+            format_error(out, crate::commands::CommandError::InvalidInteger);
+            return;
+        }
     };
     let end_str = match std::str::from_utf8(&end) {
         Ok(s) => s,
-        Err(_) => return format_error(crate::commands::CommandError::InvalidInteger),
+        Err(_) => {
+            format_error(out, crate::commands::CommandError::InvalidInteger);
+            return;
+        }
     };
 
     match (start_str.parse::<i64>(), end_str.parse::<i64>()) {
         (Ok(s), Ok(e)) => match db.lrange(&key, s, e) {
-            Ok(val) => format_array_bytes(val),
-            Err(e) => format_error(e),
+            Ok(val) => format_array_bytes(out, val),
+            Err(e) => format_error(out, e),
         },
-        _ => format_error(crate::commands::CommandError::InvalidInteger),
+        _ => format_error(out, crate::commands::CommandError::InvalidInteger),
     }
 }
 
-pub fn ltrim(db: &SharedDatabase, key: Bytes, start: Bytes, end: Bytes) -> Bytes {
+pub fn ltrim(db: &SharedDatabase, key: Bytes, start: Bytes, end: Bytes, out: &mut BytesMut) {
     let start_str = match std::str::from_utf8(&start) {
         Ok(s) => s,
-        Err(_) => return format_error(crate::commands::CommandError::InvalidInteger),
+        Err(_) => {
+            format_error(out, crate::commands::CommandError::InvalidInteger);
+            return;
+        }
     };
     let end_str = match std::str::from_utf8(&end) {
         Ok(s) => s,
-        Err(_) => return format_error(crate::commands::CommandError::InvalidInteger),
+        Err(_) => {
+            format_error(out, crate::commands::CommandError::InvalidInteger);
+            return;
+        }
     };
 
     match (start_str.parse::<i64>(), end_str.parse::<i64>()) {
         (Ok(s), Ok(e)) => match db.ltrim(&key, s, e) {
-            Ok(_) => format_simple_string("OK"),
-            Err(e) => format_error(e),
+            Ok(_) => format_simple_string(out, "OK"),
+            Err(e) => format_error(out, e),
         },
-        _ => format_error(crate::commands::CommandError::InvalidInteger),
+        _ => format_error(out, crate::commands::CommandError::InvalidInteger),
     }
 }
 
-pub fn lset(db: &SharedDatabase, key: Bytes, index: Bytes, value: Bytes) -> Bytes {
+pub fn lset(db: &SharedDatabase, key: Bytes, index: Bytes, value: Bytes, out: &mut BytesMut) {
     let index_str = match std::str::from_utf8(&index) {
         Ok(s) => s,
-        Err(_) => return format_error(crate::commands::CommandError::InvalidInteger),
+        Err(_) => {
+            format_error(out, crate::commands::CommandError::InvalidInteger);
+            return;
+        }
     };
 
     match index_str.parse::<i64>() {
         Ok(idx) => match db.lset(&key, idx, value) {
-            Ok(_) => format_simple_string("OK"),
-            Err(e) => format_error(e),
+            Ok(_) => format_simple_string(out, "OK"),
+            Err(e) => format_error(out, e),
         },
-        Err(_) => format_error(crate::commands::CommandError::InvalidInteger),
+        Err(_) => format_error(out, crate::commands::CommandError::InvalidInteger),
     }
 }
 
-pub fn linsert(db: &SharedDatabase, key: Bytes, ord: Bytes, pivot: Bytes, value: Bytes) -> Bytes {
+pub fn linsert(
+    db: &SharedDatabase,
+    key: Bytes,
+    ord: Bytes,
+    pivot: Bytes,
+    value: Bytes,
+    out: &mut BytesMut,
+) {
     let ord_str = String::from_utf8_lossy(&ord);
     match db.linsert(&key, &ord_str, &pivot, value) {
-        Ok(val) => format_integer(val),
-        Err(e) => format_error(e),
+        Ok(val) => format_integer(out, val),
+        Err(e) => format_error(out, e),
     }
 }

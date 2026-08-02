@@ -1,4 +1,4 @@
-use super::{Database};
+use super::Database;
 use crate::commands::{CommandError, Result};
 use crate::database::traits::KeyOp;
 use bytes::Bytes;
@@ -84,6 +84,7 @@ impl KeyOp for Database {
         if db as usize >= self.data.len() {
             return;
         }
-        *self.current_db.lock() = db;
+        self.current_db
+            .store(db, std::sync::atomic::Ordering::Relaxed);
     }
 }

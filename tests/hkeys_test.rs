@@ -2,7 +2,10 @@
 
 use bytes::Bytes;
 use rudis::commands::CommandError;
-use rudis::database::{Database, traits::{HashOp, StringOp}};
+use rudis::database::{
+    traits::{HashOp, StringOp},
+    Database,
+};
 
 #[test]
 fn test_hkeys_functionality() {

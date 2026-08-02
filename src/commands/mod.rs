@@ -1,15 +1,8 @@
 // Commands module for Rudis
 // Handles parsing and executing Redis commands
 
-use crate::{
-    commands::command_helper::{
-        format_array_bytes, format_bulk_string, format_error, format_hash_response, format_integer,
-        format_null, format_simple_string,
-    },
-    database::SharedDatabase,
-    networking::resp::RespValue,
-};
-use bytes::Bytes;
+use crate::{database::SharedDatabase, networking::resp::RespValue};
+use bytes::{Bytes, BytesMut};
 use std::{
     collections::HashMap,
     hash::{BuildHasherDefault, Hasher},
@@ -27,7 +20,7 @@ pub mod zsets;
 
 pub use errors::*;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Command {
     // Connection Commands
     Ping(Option<Bytes>), // PING [message] - Test connection, optionally echo message
@@ -108,7 +101,7 @@ pub enum Command {
     SetEX(Bytes, Bytes, Bytes), // SETEX key seconds value - Set key with expiration
     GetSet(Bytes, Bytes), // GETSET key value - Set key and return old value
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct SetOptions {
     pub nx: bool,
     pub xx: bool,
@@ -336,72 +329,74 @@ impl Command {
         parse_fn(elements)
     }
 
-    pub async fn execute(self, db: &SharedDatabase) -> Bytes {
+    pub async fn execute(self, db: &SharedDatabase, out: &mut BytesMut) {
         match self {
-            Command::Ping(msg) => connection::ping(msg),
+            Command::Ping(msg) => connection::ping(msg, out),
             Command::Quit => connection::quit(),
-            Command::Get(key) => strings::get(db, key),
-            Command::Set(key, value, options) => strings::set(db, key, value, options),
-            Command::Del(keys) => strings::del(db, keys),
-            Command::Incr(key) => strings::incr(db, key),
-            Command::Decr(key) => strings::decr(db, key),
-            Command::IncrBy(key, value) => strings::incr_by(db, key, value),
-            Command::DecrBy(key, value) => strings::decr_by(db, key, value),
-            Command::Append(key, value) => strings::append(db, key, value),
-            Command::Strlen(key) => strings::strlen(db, key),
-            Command::MGet(keys) => strings::mget(db, keys),
-            Command::MSet(key_values) => strings::mset(db, key_values),
-            Command::HSet(hash, pairs) => hashes::hset(db, hash, pairs),
-            Command::HGet(hash, field) => hashes::hget(db, hash, field),
-            Command::HDel(hash, fields) => hashes::hdel(db, hash, fields),
-            Command::HGetAll(key) => hashes::hgetall(db, key),
-            Command::HKeys(key) => hashes::hkeys(db, key),
-            Command::HVals(key) => hashes::hvals(db, key),
-            Command::HLen(key) => hashes::hlen(db, key),
-            Command::HExists(hash, field) => hashes::hexists(db, hash, field),
-            Command::HIncrBy(hash, field, value) => hashes::hincrby(db, hash, field, value),
+            Command::Get(key) => strings::get(db, key, out),
+            Command::Set(key, value, options) => strings::set(db, key, value, options, out),
+            Command::Del(keys) => strings::del(db, keys, out),
+            Command::Incr(key) => strings::incr(db, key, out),
+            Command::Decr(key) => strings::decr(db, key, out),
+            Command::IncrBy(key, value) => strings::incr_by(db, key, value, out),
+            Command::DecrBy(key, value) => strings::decr_by(db, key, value, out),
+            Command::Append(key, value) => strings::append(db, key, value, out),
+            Command::Strlen(key) => strings::strlen(db, key, out),
+            Command::MGet(keys) => strings::mget(db, keys, out),
+            Command::MSet(key_values) => strings::mset(db, key_values, out),
+            Command::HSet(hash, pairs) => hashes::hset(db, hash, pairs, out),
+            Command::HGet(hash, field) => hashes::hget(db, hash, field, out),
+            Command::HDel(hash, fields) => hashes::hdel(db, hash, fields, out),
+            Command::HGetAll(key) => hashes::hgetall(db, key, out),
+            Command::HKeys(key) => hashes::hkeys(db, key, out),
+            Command::HVals(key) => hashes::hvals(db, key, out),
+            Command::HLen(key) => hashes::hlen(db, key, out),
+            Command::HExists(hash, field) => hashes::hexists(db, hash, field, out),
+            Command::HIncrBy(hash, field, value) => hashes::hincrby(db, hash, field, value, out),
             Command::HIncrByFloat(hash, field, value) => {
-                hashes::hincrbyfloat(db, hash, field, value)
+                hashes::hincrbyfloat(db, hash, field, value, out)
             }
-            Command::LPush(key, value) => lists::lpush(db, key, value),
-            Command::RPush(key, value) => lists::rpush(db, key, value),
-            Command::LPop(key) => lists::lpop(db, key),
-            Command::RPop(key) => lists::rpop(db, key),
-            Command::LLen(key) => lists::llen(db, key),
-            Command::LIndex(key, index) => lists::lindex(db, key, index),
-            Command::LRange(key, start, end) => lists::lrange(db, key, start, end),
-            Command::LTrim(key, start, end) => lists::ltrim(db, key, start, end),
-            Command::LSet(key, index, value) => lists::lset(db, key, index, value),
-            Command::LInsert(key, ord, pivot, value) => lists::linsert(db, key, ord, pivot, value),
-            Command::SAdd(key, values) => sets::sadd(db, key, values),
-            Command::SRem(key, values) => sets::srem(db, key, values),
-            Command::SMembers(key) => sets::smembers(db, key),
-            Command::SCard(key) => sets::scard(db, key),
-            Command::SIsMember(key, member) => sets::sismember(db, key, member),
-            Command::SInter(items) => sets::sinter(db, items),
-            Command::SUnion(items) => sets::sunion(db, items),
-            Command::SDiff(items) => sets::sdiff(db, items),
-            Command::ZAdd(key, pairs) => zsets::zadd(db, key, pairs),
-            Command::ZRem(key, members) => zsets::zrem(db, key, members),
-            Command::ZRange(key, start, stop) => zsets::zrange(db, key, start, stop),
-            Command::ZRangeByScore(key, min, max) => zsets::zrangebyscore(db, key, min, max),
-            Command::ZCard(key) => zsets::zcard(db, key),
-            Command::ZScore(key, member) => zsets::zscore(db, key, member),
-            Command::ZRank(key, member) => zsets::zrank(db, key, member),
-            Command::Exists(keys) => keys::exists(db, keys),
-            Command::Expire(key, seconds) => keys::expire(db, key, seconds),
-            Command::Ttl(key) => keys::ttl(db, key),
-            Command::Type(key) => keys::type_(db, key),
-            Command::Keys(pattern) => keys::keys(db, pattern),
-            Command::FlushAll => keys::flushall(db),
-            Command::FlushDB => keys::flushdb(db),
-            Command::Echo(msg) => connection::echo(msg),
-            Command::Auth(msg) => connection::auth(msg),
-            Command::Select(db_index) => connection::select(db, db_index),
-            Command::Info(section) => connection::info(section),
-            Command::SetNX(key, value) => strings::setnx(db, key, value),
-            Command::SetEX(key, seconds, value) => strings::setex(db, key, seconds, value),
-            Command::GetSet(key, value) => strings::getset(db, key, value),
+            Command::LPush(key, value) => lists::lpush(db, key, value, out),
+            Command::RPush(key, value) => lists::rpush(db, key, value, out),
+            Command::LPop(key) => lists::lpop(db, key, out),
+            Command::RPop(key) => lists::rpop(db, key, out),
+            Command::LLen(key) => lists::llen(db, key, out),
+            Command::LIndex(key, index) => lists::lindex(db, key, index, out),
+            Command::LRange(key, start, end) => lists::lrange(db, key, start, end, out),
+            Command::LTrim(key, start, end) => lists::ltrim(db, key, start, end, out),
+            Command::LSet(key, index, value) => lists::lset(db, key, index, value, out),
+            Command::LInsert(key, ord, pivot, value) => {
+                lists::linsert(db, key, ord, pivot, value, out)
+            }
+            Command::SAdd(key, values) => sets::sadd(db, key, values, out),
+            Command::SRem(key, values) => sets::srem(db, key, values, out),
+            Command::SMembers(key) => sets::smembers(db, key, out),
+            Command::SCard(key) => sets::scard(db, key, out),
+            Command::SIsMember(key, member) => sets::sismember(db, key, member, out),
+            Command::SInter(items) => sets::sinter(db, items, out),
+            Command::SUnion(items) => sets::sunion(db, items, out),
+            Command::SDiff(items) => sets::sdiff(db, items, out),
+            Command::ZAdd(key, pairs) => zsets::zadd(db, key, pairs, out),
+            Command::ZRem(key, members) => zsets::zrem(db, key, members, out),
+            Command::ZRange(key, start, stop) => zsets::zrange(db, key, start, stop, out),
+            Command::ZRangeByScore(key, min, max) => zsets::zrangebyscore(db, key, min, max, out),
+            Command::ZCard(key) => zsets::zcard(db, key, out),
+            Command::ZScore(key, member) => zsets::zscore(db, key, member, out),
+            Command::ZRank(key, member) => zsets::zrank(db, key, member, out),
+            Command::Exists(keys) => keys::exists(db, keys, out),
+            Command::Expire(key, seconds) => keys::expire(db, key, seconds, out),
+            Command::Ttl(key) => keys::ttl(db, key, out),
+            Command::Type(key) => keys::type_(db, key, out),
+            Command::Keys(pattern) => keys::keys(db, pattern, out),
+            Command::FlushAll => keys::flushall(db, out),
+            Command::FlushDB => keys::flushdb(db, out),
+            Command::Echo(msg) => connection::echo(msg, out),
+            Command::Auth(msg) => connection::auth(msg, out),
+            Command::Select(db_index) => connection::select(db, db_index, out),
+            Command::Info(section) => connection::info(section, out),
+            Command::SetNX(key, value) => strings::setnx(db, key, value, out),
+            Command::SetEX(key, seconds, value) => strings::setex(db, key, seconds, value, out),
+            Command::GetSet(key, value) => strings::getset(db, key, value, out),
         }
     }
 }

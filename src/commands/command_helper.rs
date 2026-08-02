@@ -1,5 +1,6 @@
 use crate::{commands::SetOptions, networking::resp::RespValue};
 use bytes::{BufMut, Bytes, BytesMut};
+use std::fmt::Write;
 
 // Helper function to extract BulkString value
 pub fn extract_bulk_string(resp_value: &RespValue) -> Option<Bytes> {
@@ -195,66 +196,50 @@ pub fn extract_key_value_strings(elements: &[RespValue]) -> Option<Vec<(Bytes, B
         .collect::<Option<Vec<_>>>()
 }
 
-// Helper functions for response formatting
-pub fn format_integer(value: i64) -> Bytes {
-    Bytes::from(format!(":{}\r\n", value))
+// Helper functions for response formatting.
+// All writers append into `out` so replies accumulate directly in the
+// connection's response buffer without intermediate Bytes allocations.
+
+pub fn format_integer(out: &mut BytesMut, value: i64) {
+    let _ = write!(out, ":{}\r\n", value);
 }
 
-pub fn format_array(elements: Vec<String>) -> Bytes {
-    // This function still takes Vec<String> which is suboptimal, but we'll adapt it for now.
-    // The callers (like keys handler) construct Vec<String> from format_bulk_string (which we will change to return Bytes).
-    // So we should change this to take Vec<Bytes>.
-    let mut buf = BytesMut::new();
-    buf.put_slice(format!("*{}\r\n", elements.len()).as_bytes());
+pub fn format_array(out: &mut BytesMut, elements: Vec<String>) {
+    let _ = write!(out, "*{}\r\n", elements.len());
     for element in elements {
-        buf.put_slice(element.as_bytes());
+        out.put_slice(element.as_bytes());
     }
-    buf.freeze()
 }
 
 // New signature for format_array taking Bytes
-pub fn format_array_bytes(elements: Vec<Bytes>) -> Bytes {
-    let mut buf = BytesMut::new();
-    buf.put_slice(format!("*{}\r\n", elements.len()).as_bytes());
+pub fn format_array_bytes(out: &mut BytesMut, elements: Vec<Bytes>) {
+    let _ = write!(out, "*{}\r\n", elements.len());
     for element in elements {
-        buf.put_slice(&element);
+        format_bulk_string(out, &element);
     }
-    buf.freeze()
 }
 
-pub fn format_error(error: impl std::fmt::Display) -> Bytes {
-    Bytes::from(format!("-ERR {}\r\n", error))
+pub fn format_error(out: &mut BytesMut, error: impl std::fmt::Display) {
+    let _ = write!(out, "-ERR {}\r\n", error);
 }
 
-pub fn format_bulk_string(value: &Bytes) -> Bytes {
-    let mut buf = BytesMut::with_capacity(value.len() + 20);
-    buf.put_u8(b'$');
-    buf.put_slice(value.len().to_string().as_bytes());
-    buf.put_slice(b"\r\n");
-    buf.put_slice(value);
-    buf.put_slice(b"\r\n");
-    buf.freeze()
+pub fn format_bulk_string(out: &mut BytesMut, value: &Bytes) {
+    let _ = write!(out, "${}\r\n", value.len());
+    out.put_slice(value);
+    out.put_slice(b"\r\n");
 }
 
-pub fn format_null() -> Bytes {
-    Bytes::from_static(b"$-1\r\n")
+pub fn format_null(out: &mut BytesMut) {
+    out.put_slice(b"$-1\r\n");
 }
 
-pub fn format_simple_string(value: &str) -> Bytes {
-    Bytes::from(format!("+{}\r\n", value))
+pub fn format_simple_string(out: &mut BytesMut, value: &str) {
+    let _ = write!(out, "+{}\r\n", value);
 }
 
-pub fn format_hash_response(value: Vec<Bytes>) -> Bytes {
-    let mut buf = BytesMut::new();
-    buf.put_slice(format!("*{}\r\n", value.len()).as_bytes());
+pub fn format_hash_response(out: &mut BytesMut, value: Vec<Bytes>) {
+    let _ = write!(out, "*{}\r\n", value.len());
     for item in value {
-        // Reuse format_bulk_string logic or inline it to avoid excessive allocation if convenient,
-        // but format_bulk_string returns Bytes which might be zero-copy from BytesMut if well optimized?
-        // Actually format_bulk_string creates a new Bytes.
-        // Better to inline the writing here for performance?
-        // For simplicity let's append.
-        let bulk = format_bulk_string(&item);
-        buf.put_slice(&bulk);
+        format_bulk_string(out, &item);
     }
-    buf.freeze()
 }

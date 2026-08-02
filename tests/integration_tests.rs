@@ -1,7 +1,7 @@
 // Integration tests for Rudis
 // Tests the full server functionality with command parsing and execution
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use rudis::commands::Command;
 use rudis::database::Database;
 use rudis::networking::resp::RespValue;
@@ -20,8 +20,9 @@ fn test_command_parsing_and_execution_integration() {
 
     if let Some(cmd) = Command::parse(&set_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, "+OK\r\n");
     } else {
         panic!("Failed to parse SET command");
@@ -35,8 +36,9 @@ fn test_command_parsing_and_execution_integration() {
 
     if let Some(cmd) = Command::parse(&get_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, "$17\r\nintegration_value\r\n");
     } else {
         panic!("Failed to parse GET command");
@@ -58,8 +60,9 @@ fn test_hash_operations_integration() {
 
     if let Some(cmd) = Command::parse(&hset_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":1\r\n");
     }
 
@@ -72,8 +75,9 @@ fn test_hash_operations_integration() {
 
     if let Some(cmd) = Command::parse(&hget_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, "$5\r\nAlice\r\n");
     }
 
@@ -85,8 +89,9 @@ fn test_hash_operations_integration() {
 
     if let Some(cmd) = Command::parse(&hgetall_cmd) {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert!(result.contains("$4\r\nname\r\n"));
         assert!(result.contains("$5\r\nAlice\r\n"));
     }
@@ -119,8 +124,9 @@ fn test_multiple_operations_integration() {
         let resp_value = RespValue::Array(resp_parts);
 
         if let Some(cmd) = Command::parse(&resp_value) {
-            let result_bytes = rt.block_on(cmd.execute(&db));
-            let result = String::from_utf8_lossy(&result_bytes);
+            let mut out = BytesMut::new();
+            rt.block_on(cmd.execute(&db, &mut out));
+            let result = String::from_utf8_lossy(&out);
             assert_eq!(result, expected, "Command '{}' failed", cmd_str);
         } else {
             panic!("Failed to parse command: {}", cmd_str);
@@ -142,7 +148,7 @@ fn test_error_handling_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&set_cmd) {
-        rt.block_on(cmd.execute(&db));
+        rt.block_on(cmd.execute(&db, &mut BytesMut::new()));
     }
 
     let incr_cmd = RespValue::Array(vec![
@@ -151,8 +157,9 @@ fn test_error_handling_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&incr_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert!(result.contains("-ERR"));
     }
 }
@@ -170,15 +177,17 @@ fn test_numeric_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&incr_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":1\r\n");
     }
 
     // Test INCR on existing value
     if let Some(cmd) = Command::parse(&incr_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":2\r\n");
     }
 
@@ -189,8 +198,9 @@ fn test_numeric_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&decr_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":1\r\n");
     }
 
@@ -202,8 +212,9 @@ fn test_numeric_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&incrby_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":6\r\n");
     }
 
@@ -215,7 +226,9 @@ fn test_numeric_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&decrby_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":3\r\n");
     }
 }
@@ -234,7 +247,9 @@ fn test_string_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&append_cmd1) {
-        let result = rt.block_on(cmd.execute(&db));
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":5\r\n");
     }
 
@@ -246,7 +261,9 @@ fn test_string_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&append_cmd2) {
-        let result = rt.block_on(cmd.execute(&db));
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":11\r\n");
     }
 
@@ -257,7 +274,9 @@ fn test_string_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&strlen_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":11\r\n");
     }
 
@@ -268,7 +287,9 @@ fn test_string_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&strlen_cmd2) {
-        let result = rt.block_on(cmd.execute(&db));
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":0\r\n");
     }
 }
@@ -295,8 +316,9 @@ fn test_del_operations_integration() {
         let resp_value = RespValue::Array(resp_parts);
 
         if let Some(cmd) = Command::parse(&resp_value) {
-            let result_bytes = rt.block_on(cmd.execute(&db));
-            let result = String::from_utf8_lossy(&result_bytes);
+            let mut out = BytesMut::new();
+            rt.block_on(cmd.execute(&db, &mut out));
+            let result = String::from_utf8_lossy(&out);
             assert_eq!(result, expected);
         }
     }
@@ -310,7 +332,9 @@ fn test_del_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&del_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":2\r\n"); // 2 keys deleted, 1 didn't exist
     }
 
@@ -321,7 +345,9 @@ fn test_del_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&get_cmd) {
-        let result = rt.block_on(cmd.execute(&db));
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, "$-1\r\n"); // Key doesn't exist
     }
 }
@@ -336,7 +362,9 @@ fn test_ping_variations_integration() {
     let ping_cmd1 = RespValue::Array(vec![RespValue::BulkString(Bytes::from("PING".to_string()))]);
 
     if let Some(cmd) = Command::parse(&ping_cmd1) {
-        let result = rt.block_on(cmd.execute(&db));
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, "+PONG\r\n");
     }
 
@@ -347,7 +375,9 @@ fn test_ping_variations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&ping_cmd2) {
-        let result = rt.block_on(cmd.execute(&db));
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, "$11\r\nhello world\r\n");
     }
 }
@@ -374,8 +404,9 @@ fn test_hash_comprehensive_integration() {
         let resp_value = RespValue::Array(resp_parts);
 
         if let Some(cmd) = Command::parse(&resp_value) {
-            let result_bytes = rt.block_on(cmd.execute(&db));
-            let result = String::from_utf8_lossy(&result_bytes);
+            let mut out = BytesMut::new();
+            rt.block_on(cmd.execute(&db, &mut out));
+            let result = String::from_utf8_lossy(&out);
             assert_eq!(result, expected);
         }
     }
@@ -387,8 +418,9 @@ fn test_hash_comprehensive_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&hgetall_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         // Should contain all key-value pairs
         assert!(result.contains("$4\r\nname\r\n"));
         assert!(result.contains("$5\r\nAlice\r\n"));
@@ -406,8 +438,9 @@ fn test_hash_comprehensive_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&hdel_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, ":1\r\n"); // 1 field deleted
     }
 
@@ -419,8 +452,9 @@ fn test_hash_comprehensive_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&hget_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert_eq!(result, "$-1\r\n"); // Field doesn't exist
     }
 }
@@ -439,7 +473,7 @@ fn test_type_conflicts_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&set_cmd) {
-        rt.block_on(cmd.execute(&db));
+        rt.block_on(cmd.execute(&db, &mut BytesMut::new()));
     }
 
     // Try to perform hash operations on string key
@@ -450,8 +484,9 @@ fn test_type_conflicts_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&hget_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert!(result.contains("WRONGTYPE"));
     }
 
@@ -463,8 +498,9 @@ fn test_type_conflicts_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&hset_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert!(result.contains("WRONGTYPE"));
     }
 
@@ -474,8 +510,9 @@ fn test_type_conflicts_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&hgetall_cmd) {
-        let result_bytes = rt.block_on(cmd.execute(&db));
-        let result = String::from_utf8_lossy(&result_bytes);
+        let mut out = BytesMut::new();
+        rt.block_on(cmd.execute(&db, &mut out));
+        let result = String::from_utf8_lossy(&out);
         assert!(result.contains("WRONGTYPE"));
     }
 }
@@ -537,8 +574,9 @@ fn test_complex_sequence_integration() {
         let resp_value = RespValue::Array(resp_parts);
 
         if let Some(cmd) = Command::parse(&resp_value) {
-            let result_bytes = rt.block_on(cmd.execute(&db));
-            let result = String::from_utf8_lossy(&result_bytes);
+            let mut out = BytesMut::new();
+            rt.block_on(cmd.execute(&db, &mut out));
+            let result = String::from_utf8_lossy(&out);
             assert_eq!(result, expected, "Command '{}' failed", cmd_str);
         } else {
             panic!("Failed to parse command: {}", cmd_str);

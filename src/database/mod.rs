@@ -8,6 +8,7 @@ use dashmap::DashMap;
 use parking_lot::Mutex;
 use regex::Regex;
 use std::collections::HashSet;
+use std::sync::atomic::AtomicU8;
 use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, sync::Arc};
 
@@ -27,7 +28,7 @@ pub(crate) enum RedisValue {
 pub struct Database {
     pub(crate) data: HashMap<u8, DashMap<Bytes, RedisValue>>,
     pub(crate) data_expiration_time: HashMap<u8, DashMap<Bytes, SystemTime>>,
-    pub(crate) current_db: Mutex<u8>,
+    pub(crate) current_db: AtomicU8,
 }
 
 pub mod traits;
@@ -44,7 +45,7 @@ impl Database {
         Database {
             data,
             data_expiration_time,
-            current_db: Mutex::new(0),
+            current_db: AtomicU8::new(0),
         }
     }
     pub fn new_shared(db_num: usize) -> SharedDatabase {
@@ -63,13 +64,15 @@ impl Database {
         }
     }
     fn current_data(&self) -> &DashMap<Bytes, RedisValue> {
-        let db = *self.current_db.lock();
-        self.data.get(&db).unwrap()
+        self.data
+            .get(&self.current_db.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap()
     }
 
     fn current_expiration(&self) -> &DashMap<Bytes, SystemTime> {
-        let db = *self.current_db.lock();
-        self.data_expiration_time.get(&db).unwrap()
+        self.data_expiration_time
+            .get(&self.current_db.load(std::sync::atomic::Ordering::Relaxed))
+            .unwrap()
     }
 
     fn add_value(&self, key: &Bytes, val: i64) -> Result<i64> {
@@ -101,9 +104,9 @@ impl Database {
     }
 }
 
-pub mod keys;
-pub mod strings;
 pub mod hashes;
+pub mod keys;
 pub mod lists;
 pub mod sets;
+pub mod strings;
 pub mod zsets;

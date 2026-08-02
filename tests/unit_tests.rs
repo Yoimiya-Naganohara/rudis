@@ -4,7 +4,10 @@
 use bytes::Bytes;
 use rudis::commands::CommandError;
 use rudis::data_structures::{RedisHash, RedisList, RedisSet, RedisSortedSet, RedisString};
-use rudis::database::{Database, traits::{HashOp, SetOp, StringOp}};
+use rudis::database::{
+    traits::{HashOp, SetOp, StringOp},
+    Database,
+};
 
 #[test]
 fn test_redis_string_operations() {

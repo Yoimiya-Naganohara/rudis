@@ -1,6 +1,6 @@
 // Tests for Command::parse dispatch (case-insensitivity, arity, unknown commands)
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use rudis::commands::Command;
 use rudis::database::Database;
 use rudis::networking::resp::RespValue;
@@ -138,11 +138,17 @@ fn test_hset_multiple_pairs_executes() {
 
     let parsed = Command::parse(&cmd("HSET", &["h", "f1", "v1", "f2", "v2"])).unwrap();
     // First call: both fields are new
-    assert_eq!(rt.block_on(parsed.execute(&db)), Bytes::from(":2\r\n"));
+    let mut out = BytesMut::new();
+    rt.block_on(parsed.execute(&db, &mut out));
+    assert_eq!(out.as_ref(), b":2\r\n");
     // Second call: both fields already exist, nothing added
     let parsed = Command::parse(&cmd("HSET", &["h", "f1", "v1", "f2", "v2"])).unwrap();
-    assert_eq!(rt.block_on(parsed.execute(&db)), Bytes::from(":0\r\n"));
+    let mut out = BytesMut::new();
+    rt.block_on(parsed.execute(&db, &mut out));
+    assert_eq!(out.as_ref(), b":0\r\n");
     // Update one field: only the new one counts
     let parsed = Command::parse(&cmd("HSET", &["h", "f1", "v1b", "f3", "v3"])).unwrap();
-    assert_eq!(rt.block_on(parsed.execute(&db)), Bytes::from(":1\r\n"));
+    let mut out = BytesMut::new();
+    rt.block_on(parsed.execute(&db, &mut out));
+    assert_eq!(out.as_ref(), b":1\r\n");
 }

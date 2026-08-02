@@ -1,7 +1,10 @@
 // Test for HDEL functionality fix
 
 use bytes::Bytes;
-use rudis::database::{Database, traits::{HashOp, StringOp}};
+use rudis::database::{
+    traits::{HashOp, StringOp},
+    Database,
+};
 
 #[test]
 fn test_hdel_multiple_fields() {
