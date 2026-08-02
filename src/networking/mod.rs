@@ -48,8 +48,8 @@ impl Networking {
         let mut responses = BytesMut::with_capacity(4096);
 
         loop {
-            // // Read more data into buffer
-            // buffer.reserve(64 * 1024);
+            // Read more data into buffer
+            buffer.reserve(64 * 1024);
             let n = reader.read_buf(&mut buffer).await?;
             if n == 0 {
                 // Connection closed
