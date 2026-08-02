@@ -31,6 +31,11 @@ criterion = { version = "0.5", features = ["html_reports"] }
 tempfile = "3.0"
 proptest = "1.0"
 
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+
 [[bench]]
 name = "redis_benchmark"
 harness = false

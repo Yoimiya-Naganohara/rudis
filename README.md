@@ -1,86 +1,45 @@
-# Rudis - A Redis-like Server in Rust
+# Rudis
 
 [![Rust](https://img.shields.io/badge/rust-1.80%2B-orange)](https://www.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![CI](https://github.com/Yoimiya-Naganohara/rudis/actions/workflows/ci.yml/badge.svg)](https://github.com/Yoimiya-Naganohara/rudis/actions/workflows/ci.yml)
 
-Rudis is a high-performance, Redis-compatible server implementation written in Rust. It provides a drop-in replacement for Redis with improved performance, memory efficiency, and safety guarantees through Rust's ownership system.
+A Redis-compatible in-memory data store written in Rust, built on a multi-threaded Tokio runtime with zero-copy RESP decoding.
+
+**Key numbers** (16-core WSL2, real TCP client, per-reply content verification):
+
+| | Rudis | Garnet 2.1.1 | Valkey 9.0.5 |
+|---|---|---|---|
+| GET (100 conns × 200 pipeline) | 23.3M req/s | **32.8M** | 2.99M |
+| SET (50 conns × 100 pipeline) | 15.1M req/s | **17.4M** | 2.15M |
+| HSET (50 conns × 100 pipeline) | **13.4M req/s** | 9.7M | 2.22M |
+
+Rudis beats Valkey in every test point; against Garnet it wins the low/mid-concurrency points while Garnet's .NET lock-free read path and log-structured writes win deep-pipeline/high-concurrency loads; see [Performance](#performance).
 
 ## Features
 
-- **Redis Protocol Compatibility**: Supports core Redis commands and data structures
-- **High Performance**: Multi-threaded Tokio runtime with zero-copy RESP decoding and allocation-free response formatting
-- **Memory Safe**: Prevents common memory errors through Rust's type system
-- **Concurrent**: DashMap-sharded data store with per-shard locking for concurrent reads and writes
-- **Persistence**: Supports RDB snapshots for data durability
-- **Data Structures**: Implements strings, lists, hashes, sets, and sorted sets
-- **Extensible**: Modular architecture for easy addition of new features
+- **Zero-copy RESP parsing** — bulk strings are refcounted slices of the receive buffer, no per-frame copying (`redis-protocol` `decode-mut`)
+- **Allocation-free response path** — replies are formatted directly into the connection's output buffer
+- **Sharded data store** — `DashMap` with per-shard locks; reads run in parallel across worker threads
+- **Pipelining** — batches of pipelined commands are decoded and executed in one pass with buffered, threshold-flushed replies
+- **Data structures** — strings, lists, hashes, sets, sorted sets, with expiration (`EXPIRE`/`TTL`)
+- **Concurrent** — one Tokio task per connection on a multi-threaded runtime
+- **Rust safety** — memory safety guaranteed by the type system; no unsafe code in the server
 
-## Supported Commands
+## Quick Start
 
-Rudis implements a subset of Redis commands, including:
+```bash
+git clone https://github.com/Yoimiya-Naganohara/rudis.git
+cd rudis
+cargo run --release          # listens on 127.0.0.1:6379
+```
 
-### Connection
-- `PING`, `QUIT`, `ECHO`, `AUTH`, `SELECT`, `INFO`
-
-### Strings
-- `SET`, `GET`, `SETNX`, `SETEX`, `GETSET`, `MSET`, `MGET`, `INCR`, `DECR`, `INCRBY`, `DECRBY`, `APPEND`, `STRLEN`, `DEL`
-
-### Hashes
-- `HSET`, `HGET`, `HGETALL`, `HDEL`, `HKEYS`, `HVALS`, `HLEN`, `HEXISTS`, `HINCRBY`, `HINCRBYFLOAT`
-
-### Lists
-- `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LLEN`, `LINDEX`, `LRANGE`, `LTRIM`, `LSET`, `LINSERT`
-
-### Sets
-- `SADD`, `SREM`, `SMEMBERS`, `SCARD`, `SISMEMBER`, `SINTER`, `SUNION`, `SDIFF`
-
-### Sorted Sets
-- `ZADD`, `ZRANGE`, `ZRANGEBYSCORE`, `ZREM`, `ZCARD`, `ZSCORE`, `ZRANK`
-
-### Keys
-- `EXISTS`, `EXPIRE`, `TTL`, `TYPE`, `KEYS`, `FLUSHALL`, `FLUSHDB`
-
-*Note: Not all Redis commands are implemented yet. Check [TODO.md](TODO.md) for planned additions.*
-
-## Prerequisites
-
-- Rust 1.80 or later
-- Cargo (comes with Rust)
-
-## Installation
-
-### Building from Source
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Yoimiya-Naganohara/rudis.git
-   cd rudis
-   ```
-
-2. **Build the project**
-   ```bash
-   cargo build --release
-   ```
-
-3. **Run the server**
-   ```bash
-   cargo run --release
-   ```
-
-The server will start on the default port (typically 6379).
-
-## Usage
-
-### Basic Commands
-
-Connect using any Redis client (e.g., `redis-cli`):
+Connect with any Redis client:
 
 ```bash
 redis-cli -p 6379
 ```
 
-Example commands:
 ```redis
 SET key "Hello, Rudis!"
 GET key
@@ -88,192 +47,166 @@ HSET myhash field1 "value1"
 HGET myhash field1
 LPUSH mylist "item1"
 LPOP mylist
+ZADD zset 1.5 member
+ZRANGE zset 0 -1
 ```
 
-### Configuration
+## Supported Commands
 
-The server binds to `127.0.0.1:6379` with 16 databases by default. Configuration is hard-coded in `src/config/mod.rs` (config-file loading is on the roadmap, see [TODO.md](TODO.md)).
+### Connection
+`PING` `QUIT` `ECHO` `AUTH` `SELECT` `INFO`
+
+### Strings
+`SET` (NX/XX/EX/PX/KEEPTTL) `GET` `SETNX` `SETEX` `GETSET` `MSET` `MGET` `INCR` `DECR` `INCRBY` `DECRBY` `APPEND` `STRLEN` `DEL`
+
+### Hashes
+`HSET` (multi-pair) `HGET` `HGETALL` `HDEL` `HKEYS` `HVALS` `HLEN` `HEXISTS` `HINCRBY` `HINCRBYFLOAT`
+
+### Lists
+`LPUSH` `RPUSH` `LPOP` `RPOP` `LLEN` `LINDEX` `LRANGE` `LTRIM` `LSET` `LINSERT`
+
+### Sets
+`SADD` `SREM` `SMEMBERS` `SCARD` `SISMEMBER` `SINTER` `SUNION` `SDIFF`
+
+### Sorted Sets
+`ZADD` (Redis added-count semantics) `ZRANGE` `ZRANGEBYSCORE` `ZREM` `ZCARD` `ZSCORE` `ZRANK`
+
+### Keys
+`EXISTS` `EXPIRE` `TTL` `TYPE` `KEYS` `FLUSHALL` `FLUSHDB`
+
+Missing commands are tracked in [TODO.md](TODO.md).
 
 ## Performance
 
-Rudis is benchmarked against **Valkey 9.0.5** on the same machine (16-core, WSL2) with persistence disabled on both servers. Two clients are used:
+### Methodology
 
-- **`bench_client`** (in `examples/`): an independent Tokio load client with real TCP connections and RESP pipelining (`cargo run --release --example bench_client -- <addr> <conns> <pipeline> <total> <get|set|hset>`).
-- `valkey-benchmark` (cross-checked: its numbers match `bench_client` for Valkey within ~3%, but it **underreports Rudis** because its single-threaded client caps out around 9M req/s — below what Rudis can serve).
+- Same machine (16-core, WSL2); persistence disabled on all servers
+- **`bench_client`** (`examples/bench_client.rs`): independent Tokio load client — real TCP connections, RESP pipelining, and **per-reply content verification** (every GET must return the stored value, every SET must return `OK`)
+- Load profiles: `conns × pipeline` per command, 0.5–1M requests
+- Garnet v2.1.1 (pure in-memory, .NET 10); Valkey 9.0.5 (`--save "" --appendonly no`)
+- `valkey-benchmark` is *not* used for Rudis numbers: its single-threaded client caps at ~9M req/s and underreports Rudis (cross-checked: it matches `bench_client` for Valkey within ~3%)
 
-Numbers below are single runs of `bench_client`, 1M requests per command, fixed key per connection (valkey-benchmark random-key results for Rudis are client-bound and not representative).
+### Results (req/s)
 
-### Deep pipelining (`-c 50 -P 100` and `-c 100 -P 200` equivalents)
+```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#1f77b4, #ff7f0e, #2ca02c"
+---
+xychart-beta
+    title "50 connections x 100 pipeline (req/s)"
+    x-axis ["GET", "SET", "HSET"]
+    y-axis "req/s" 0 --> 15000000
+    bar [13900000, 15100000, 13400000]
+    bar [3790000, 17400000, 9700000]
+    bar [2970000, 2150000, 2220000]
+```
 
-| Command | Rudis (req/sec) | Valkey (req/sec) | Delta |
-|---------|-----------------|------------------|-------|
-| GET (50x100)   | 13,200,000 | 2,960,000 | +346% |
-| GET (100x200)  | 21,600,000 | 2,920,000 | +640% |
-| SET (50x100)   | 13,500,000 | 2,130,000 | +534% |
-| SET (100x200)  | 17,900,000 | 2,270,000 | +688% |
-| HSET (50x100)  | 11,900,000 | 2,130,000 | +558% |
+*Bar series in declaration order: blue = Rudis, orange = Garnet, green = Valkey. (Requires a mermaid renderer with `xychart-beta` support, e.g. GitHub; older renderers fall back to the table below.)*
 
-### Low concurrency (500K requests per command)
+| Load | Command | **Rudis** | Garnet | Valkey |
+|---|---|---|---|---|
+| 1 conn × 500 | GET | 2.53M | **3.23M** | 2.17M |
+| 16 × 16 | GET | **3.53M** | 1.77M | 1.83M |
+| 50 × 100 | GET | **13.9M** | 3.79M | 2.97M |
+| 50 × 100 | SET | 15.1M | **17.4M** | 2.15M |
+| 50 × 100 | HSET | **13.4M** | 9.7M | 2.22M |
+| 100 × 200 | GET | 23.3M | **32.8M** | 2.99M |
+| 100 × 200 | SET | 19.0M | **26.9M** | 2.27M |
+| 100 × 200 | HSET | 15.5M | **23.4M** | — |
+| 200 × 250 | GET | 21.4M | **29.2M** | — |
+| 200 × 250 | SET | **19.0M** | 3.41M* | — |
+| 200 × 250 | HSET | **16.4M** | 3.46M* | — |
 
-| Config     | GET (Rudis/Valkey) |
-|------------|--------------------|
-| `1x500`    | 2.53M / 2.17M     |
-| `16x16`    | 3.53M / 1.83M     |
+*Garnet results are medians of multiple runs — it fluctuates wildly (GC pauses, up to 7x between runs), while Rudis reproduces within ~3%. The 200×250 write outliers (3.4M) show the low end of that fluctuation; its write medians at 50×100 (17.4M SET, 9.7M HSET) are the reliable figures. Valkey is at its optimum: `io-threads` on this WSL2 machine makes it *slower*. Rudis numbers use the `[profile.release] lto = "fat", codegen-units = 1` build.
 
-### Comparison with Garnet v2.1.1 (Microsoft)
+### Reading the numbers
 
-Same machine, same `bench_client` (real TCP + RESP, per-reply content checks). Garnet runs in pure in-memory mode (.NET 10 runtime, WSL2).
+- **Rudis scales with connection count** — from 2.5M (single connection, round-trip bound) to 23.3M at 100×200 — while Valkey's single-threaded event loop tops out at 2–3M in every profile (enabling `io-threads` made Valkey *slower* on this WSL2 machine)
+- **Garnet wins the high-concurrency points** (100×200 GET +41%, SET +42%, 200×250 GET +36%): its lock-free read path and log-structured writes shine once enough requests are in flight. But it needs that in-flight depth — at 50×100 it manages only 3.79M GET (vs Rudis 13.9M) — and it is highly unstable run-to-run
+- **Rudis wins the low/mid-concurrency points** (16×16 GET, 50×100 GET/HSET) and is the most consistent server of the three; the LTO release build added 6–27% over the default profile
+- All benchmarks include full reply-content verification, so the numbers carry correctness backing
 
-| Config | Command | **Rudis** | **Garnet** | Valkey |
-|--------|---------|-----------|------------|--------|
-| 1x500  | GET     | 2.53M     | 3.23M      | 2.17M  |
-| 16x16  | GET     | **3.53M** | 1.77M      | 1.83M  |
-| 50x100 | GET     | **13.8M** | 3.30M      | 2.97M  |
-| 50x100 | SET     | **13.6M** | 6.95M      | 2.15M  |
-| 50x100 | HSET    | **11.9M** | 4.31M      | 2.22M  |
-| 100x200| GET     | **21.6M** | 8.95M*     | 2.99M  |
-| 100x200| SET     | **17.9M** | 5.04M      | 2.27M  |
-| 200x250| GET     | 16.9M     | **24.7M**  | —      |
-| 200x250| SET     | **19.0M** | 3.41M      | —      |
-| 200x250| HSET    | **16.4M** | 3.46M      | —      |
+### Reproduce
 
-*Garnet re-run at 100x200 GET measured 5.47M — its numbers vary widely (GC pauses), while Rudis results are stable within ~3%.
+```bash
+# Build the load client
+cargo build --release --example bench_client
 
-Rudis wins 10 of 12 comparison points. Garnet's lock-free read path wins only at 50K in-flight GETs (24.7M vs 16.9M) and at a single connection (+2%); its write path degrades under concurrency (main-log append serialization), while Rudis stays at 19M SET even at 50K in-flight.
+# Rudis
+cargo run --release &
 
-### Interpretation
+# 50 connections × 100 pipeline, 1M GETs with content verification
+target/release/examples/bench_client 127.0.0.1:6379 50 100 1000000 get
+target/release/examples/bench_client 127.0.0.1:6379 50 100 1000000 set
+target/release/examples/bench_client 127.0.0.1:6379 50 100 1000000 hset
+```
 
-- **Rudis scales with connection count** (2.5M single-connection up to 21.6M at 100 connections x 200 pipeline) thanks to the multi-threaded Tokio runtime and DashMap-sharded data store; **Valkey's single-threaded event loop tops out at 2-3M** regardless of load.
-- At a single connection both servers are close (pipeline round-trip bound).
-- valkey-benchmark data published in earlier revisions of this README understated Rudis (client bottleneck); the `bench_client` numbers above are the authoritative ones.
+## Architecture
 
-### Implementation notes
+```mermaid
+graph TD
+    CLI[Redis client] -->|TCP / RESP2| NET[Per-connection Tokio task]
+    NET --> DEC[Zero-copy decode_mut]
+    DEC --> PARSE[Command::parse<br/>hash-table dispatch]
+    PARSE --> EXEC[Command::execute]
+    EXEC --> STORE[(Database<br/>per-shard DashMap)]
+    EXEC --> BUF[Per-connection response buffer]
+    BUF -->|flush at 16 KiB / batch end| CLI
+```
 
-- Zero-copy RESP decoding via `redis-protocol`'s `decode-mut` feature (bulk strings are refcounted slices, no per-frame copying)
-- Response formatting writes directly into the connection's output buffer (no intermediate allocations)
-- `AtomicU8` database index instead of a global mutex
-- Single-lookup hash inserts via `HashMap::entry`
+- **Networking** (`src/networking/`) — one task per connection; reads up to 64 KiB per cycle, decodes every complete frame without copying, executes, and flushes buffered replies
+- **Commands** (`src/commands/`) — case-insensitive hash-table dispatch (`COMMAND_TABLE`), handlers write responses straight into the connection's buffer
+- **Database** (`src/database/`) — 16 logical databases, each a `DashMap<Bytes, RedisValue>`; `AtomicU8` index, no global lock on the hot path
+- **Data structures** (`src/data_structures/`) — `RedisString`, `RedisList` (`VecDeque`), `RedisHash` (`HashMap`), `RedisSet` (`HashSet`), `RedisSortedSet` (`HashMap` + `BTreeSet` with score ordering)
 
 ## Project Structure
 
-### Core Source Code (`src/`)
-
-- `main.rs`: Application entry point, server initialization
-- `lib.rs`: Library exports and shared utilities
-- `error.rs`: Error handling types
-
-#### `src/server/`
-- `mod.rs`: Core server logic, client management, and event loop
-
-#### `src/commands/`
-- `mod.rs`: Command parsing and routing
-- `command_helper.rs`: Helper functions for command processing
-- `errors.rs`: Command-specific error handling
-
-#### `src/database/`
-- `mod.rs`: In-memory database implementation
-
-#### `src/persistence/`
-- `mod.rs`: Persistence mechanisms (RDB snapshots)
-
-#### `src/networking/`
-- `mod.rs`: TCP networking and Redis protocol handling
-- `resp.rs`: RESP type alias (backed by `redis-protocol` crate)
-
-#### `src/data_structures/`
-- `mod.rs`: Data structure module declarations
-- `string.rs`: String operations
-- `list.rs`: List operations
-- `hash.rs`: Hash/dictionary operations
-- `set.rs`: Set operations
-- `sorted_set.rs`: Sorted set with scoring
-
-### Benchmarks (`benches/`)
-- `redis_benchmark.rs`: Performance benchmarks for various operations
-
-### Tests (`tests/`)
-- `integration_tests.rs`: End-to-end integration tests
-- `unit_tests.rs`: Unit tests for individual components
-- Various command-specific tests (e.g., `hdel_test.rs`, `hkeys_test.rs`)
-
-### Build Artifacts (`target/`)
-- Automatically generated by Cargo (ignored in version control)
-
-## Architecture Overview
-
 ```
-┌─────────────────┐    ┌─────────────────┐
-│   Networking    │◄──►│     Server      │
-│   (TCP/RESP)    │    │   (Main Loop)   │
-└─────────────────┘    └─────────────────┘
-                               │
-                               ▼
-┌─────────────────┐    ┌─────────────────┐
-│   Commands      │◄──►│   Database      │
-│   (Parsing &    │    │   (In-Memory    │
-│    Routing)     │    │     Store)      │
-└─────────────────┘    └─────────────────┘
-                               │
-                               ▼
-┌─────────────────┐    ┌─────────────────┐
-│ Data Structures │    │  Persistence    │
-│ (Strings, Lists,│    │     (RDB)       │
-│  Hashes, Sets)  │    └─────────────────┘
-└─────────────────┘
+src/
+├── main.rs            # entry point
+├── config/            # server config (hard-coded defaults)
+├── networking/        # TCP accept loop, per-connection handler, RESP
+├── commands/          # command enum, dispatch table, per-type handlers
+├── database/          # sharded in-memory store, trait implementations
+├── data_structures/   # RedisString, RedisList, RedisHash, RedisSet, RedisSortedSet
+├── persistence/       # RDB snapshot stub (not wired in yet)
+└── server/            # server assembly
+
+examples/
+└── bench_client.rs    # independent load-test client (real TCP + RESP)
+
+benches/
+└── redis_benchmark.rs # criterion benchmarks (parse, per-command, stress)
+
+tests/                 # integration + unit tests (38 tests)
 ```
 
 ## Development
 
-### Setup
 ```bash
-cargo build
+cargo build             # build
+cargo test              # run all tests (38 tests)
+cargo bench             # criterion benchmarks
+cargo fmt               # format
+cargo clippy            # lint
 ```
 
-### Running Tests
-```bash
-cargo test
-```
+Test coverage: command parsing/dispatch, all data structures (including sorted-set semantics, NaN score rejection, tie-breaking), type-conflict errors, and database edge cases.
 
-### Benchmarks
-```bash
-cargo bench
-```
+## Known Limitations
 
-### Code Quality
-- `cargo check`: Quick compilation checks
-- `cargo fmt`: Format code
-- `cargo clippy`: Linting
+- **No `CONFIG GET`/`SET`** — client libraries and `valkey-benchmark` probe for it (hence the "Could not fetch server CONFIG" warning)
+- **Persistence is a stub** — RDB/AOF are on the roadmap, not implemented; the server is in-memory only
+- **`SADD`/`ZADD` return `0` instead of `WRONGTYPE`** on type mismatch (trait signatures return `usize`)
+- **Expiration is passive** — expired keys are only cleaned when accessed
+- `zrank` is O(n); small hashes are plain `HashMap`s (no listpack-style encoding yet)
 
-## Testing
+## Roadmap
 
-Rudis includes comprehensive tests to ensure reliability:
-
-### Unit Tests
-```bash
-cargo test --lib
-```
-
-### Integration Tests
-```bash
-cargo test --test integration_tests
-```
-
-### All Tests
-```bash
-cargo test
-```
-
-### Benchmarks
-```bash
-cargo bench
-```
-
-Test coverage includes:
-- Command parsing and execution
-- Data structure operations
-- Network protocol handling
-- Concurrent access patterns
-- Persistence functionality
+See [TODO.md](TODO.md) for planned features, including persistence, transactions, Pub/Sub, and remaining commands.
 
 ## Contributing
 
@@ -283,22 +216,8 @@ Test coverage includes:
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-### Guidelines
-- Follow the existing code structure
-- Add tests for new features
-- Update documentation as needed
-- Ensure all checks pass (`cargo fmt`, `cargo clippy`, `cargo test`)
-
-## Roadmap
-
-See [TODO.md](TODO.md) for planned features and improvements.
-
-## Acknowledgements
-
-- Inspired by [Redis](https://redis.io/), the original in-memory data structure store
-- Built with [Rust](https://www.rust-lang.org/) for performance and safety
-- Uses the RESP protocol for Redis compatibility
+Guidelines: follow the existing module structure, add tests for new features, and ensure `cargo fmt`, `cargo clippy`, and `cargo test` all pass.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see the [LICENSE](LICENSE) file.
