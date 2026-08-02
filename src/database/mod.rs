@@ -61,15 +61,19 @@ impl Database {
         }
     }
     fn current_data(&self) -> &DashMap<Bytes, RedisValue> {
+        // current_db is only written by select(), which refuses indices
+        // >= data.len(), so the lookup below cannot fail.
         self.data
             .get(&self.current_db.load(std::sync::atomic::Ordering::Relaxed))
-            .unwrap()
+            .expect("current DB index is always a valid key (select validates)")
     }
 
     fn current_expiration(&self) -> &DashMap<Bytes, SystemTime> {
+        // Same invariant as current_data: the map is keyed by the same DB
+        // indices and current_db is validated by select().
         self.data_expiration_time
             .get(&self.current_db.load(std::sync::atomic::Ordering::Relaxed))
-            .unwrap()
+            .expect("current DB index is always a valid key (select validates)")
     }
 
     fn add_value(&self, key: &Bytes, val: i64) -> Result<i64> {

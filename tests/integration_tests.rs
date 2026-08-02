@@ -19,7 +19,7 @@ fn test_command_parsing_and_execution_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&set_cmd) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
         let mut out = BytesMut::new();
         rt.block_on(cmd.execute(&db, &mut out));
         let result = String::from_utf8_lossy(&out);
@@ -35,7 +35,7 @@ fn test_command_parsing_and_execution_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&get_cmd) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
         let mut out = BytesMut::new();
         rt.block_on(cmd.execute(&db, &mut out));
         let result = String::from_utf8_lossy(&out);
@@ -59,7 +59,7 @@ fn test_hash_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&hset_cmd) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
         let mut out = BytesMut::new();
         rt.block_on(cmd.execute(&db, &mut out));
         let result = String::from_utf8_lossy(&out);
@@ -74,7 +74,7 @@ fn test_hash_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&hget_cmd) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
         let mut out = BytesMut::new();
         rt.block_on(cmd.execute(&db, &mut out));
         let result = String::from_utf8_lossy(&out);
@@ -88,7 +88,7 @@ fn test_hash_operations_integration() {
     ]);
 
     if let Some(cmd) = Command::parse(&hgetall_cmd) {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
         let mut out = BytesMut::new();
         rt.block_on(cmd.execute(&db, &mut out));
         let result = String::from_utf8_lossy(&out);
@@ -101,7 +101,7 @@ fn test_hash_operations_integration() {
 fn test_multiple_operations_integration() {
     // Test a sequence of operations
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // SET multiple keys
     let commands = vec![
@@ -138,7 +138,7 @@ fn test_multiple_operations_integration() {
 fn test_error_handling_integration() {
     // Test error conditions
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Test INCR on non-integer value
     let set_cmd = RespValue::Array(vec![
@@ -168,7 +168,7 @@ fn test_error_handling_integration() {
 fn test_numeric_operations_integration() {
     // Test INCR, DECR, INCRBY, DECRBY operations
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Test INCR on non-existent key
     let incr_cmd = RespValue::Array(vec![
@@ -237,7 +237,7 @@ fn test_numeric_operations_integration() {
 fn test_string_operations_integration() {
     // Test APPEND and STRLEN operations
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Test APPEND on non-existent key
     let append_cmd1 = RespValue::Array(vec![
@@ -298,7 +298,7 @@ fn test_string_operations_integration() {
 fn test_del_operations_integration() {
     // Test DEL command with multiple keys
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Set up some keys
     let set_cmds = vec![
@@ -356,7 +356,7 @@ fn test_del_operations_integration() {
 fn test_ping_variations_integration() {
     // Test PING command variations
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Test PING without argument
     let ping_cmd1 = RespValue::Array(vec![RespValue::BulkString(Bytes::from("PING".to_string()))]);
@@ -386,7 +386,7 @@ fn test_ping_variations_integration() {
 fn test_hash_comprehensive_integration() {
     // Comprehensive hash operations test
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Set up hash with multiple fields
     let hset_cmds = vec![
@@ -463,7 +463,7 @@ fn test_hash_comprehensive_integration() {
 fn test_type_conflicts_integration() {
     // Test WRONGTYPE errors when operations are performed on wrong data types
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Set a string value
     let set_cmd = RespValue::Array(vec![
@@ -542,7 +542,7 @@ fn test_invalid_commands_integration() {
 fn test_complex_sequence_integration() {
     // Test a complex sequence of operations mixing different data types
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     let commands = vec![
         // String operations

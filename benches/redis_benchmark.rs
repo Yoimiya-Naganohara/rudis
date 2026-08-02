@@ -14,7 +14,7 @@ use rudis::networking::resp::RespValue;
 
 fn bench_string_operations(c: &mut Criterion) {
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     c.bench_function("string_set", |b| {
         let set_cmd = RespValue::Array(vec![
@@ -22,7 +22,7 @@ fn bench_string_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"bench_key")),
             RespValue::BulkString(Bytes::from_static(b"bench_value")),
         ]);
-        let cmd = Command::parse(&set_cmd).unwrap();
+        let cmd = Command::parse(&set_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -39,7 +39,7 @@ fn bench_string_operations(c: &mut Criterion) {
         ]);
         rt.block_on(
             Command::parse(&set_cmd)
-                .unwrap()
+                .expect("command should parse")
                 .execute(&db, &mut BytesMut::new()),
         );
 
@@ -47,7 +47,7 @@ fn bench_string_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"GET")),
             RespValue::BulkString(Bytes::from_static(b"bench_key")),
         ]);
-        let cmd = Command::parse(&get_cmd).unwrap();
+        let cmd = Command::parse(&get_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -58,7 +58,7 @@ fn bench_string_operations(c: &mut Criterion) {
 
 fn bench_hash_operations(c: &mut Criterion) {
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Setup: create a hash with multiple fields
     for i in 0..100 {
@@ -70,7 +70,7 @@ fn bench_hash_operations(c: &mut Criterion) {
         ]);
         rt.block_on(
             Command::parse(&hset_cmd)
-                .unwrap()
+                .expect("command should parse")
                 .execute(&db, &mut BytesMut::new()),
         );
     }
@@ -82,7 +82,7 @@ fn bench_hash_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"new_field")),
             RespValue::BulkString(Bytes::from_static(b"new_value")),
         ]);
-        let cmd = Command::parse(&hset_cmd).unwrap();
+        let cmd = Command::parse(&hset_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -96,7 +96,7 @@ fn bench_hash_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"bench_hash")),
             RespValue::BulkString(Bytes::from_static(b"field_50")),
         ]);
-        let cmd = Command::parse(&hget_cmd).unwrap();
+        let cmd = Command::parse(&hget_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -107,7 +107,7 @@ fn bench_hash_operations(c: &mut Criterion) {
     c.bench_function("hash_hgetall_small", |b| {
         // Test with small hash (10 fields)
         let small_db = Database::new_shared(16);
-        let small_rt = tokio::runtime::Runtime::new().unwrap();
+        let small_rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
         for i in 0..10 {
             let hset_cmd = RespValue::Array(vec![
@@ -118,7 +118,7 @@ fn bench_hash_operations(c: &mut Criterion) {
             ]);
             small_rt.block_on(
                 Command::parse(&hset_cmd)
-                    .unwrap()
+                    .expect("command should parse")
                     .execute(&small_db, &mut BytesMut::new()),
             );
         }
@@ -127,7 +127,7 @@ fn bench_hash_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"HGETALL")),
             RespValue::BulkString(Bytes::from_static(b"small_hash")),
         ]);
-        let cmd = Command::parse(&hgetall_cmd).unwrap();
+        let cmd = Command::parse(&hgetall_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -140,7 +140,7 @@ fn bench_hash_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"HGETALL")),
             RespValue::BulkString(Bytes::from_static(b"bench_hash")),
         ]);
-        let cmd = Command::parse(&hgetall_cmd).unwrap();
+        let cmd = Command::parse(&hgetall_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -151,7 +151,7 @@ fn bench_hash_operations(c: &mut Criterion) {
 
 fn bench_list_operations(c: &mut Criterion) {
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Setup: create a list with some items
     for i in 0..100 {
@@ -162,7 +162,7 @@ fn bench_list_operations(c: &mut Criterion) {
         ]);
         rt.block_on(
             Command::parse(&rpush_cmd)
-                .unwrap()
+                .expect("command should parse")
                 .execute(&db, &mut BytesMut::new()),
         );
     }
@@ -173,7 +173,7 @@ fn bench_list_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"bench_list")),
             RespValue::BulkString(Bytes::from_static(b"new_item")),
         ]);
-        let cmd = Command::parse(&rpush_cmd).unwrap();
+        let cmd = Command::parse(&rpush_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -193,8 +193,8 @@ fn bench_list_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"LPOP")),
             RespValue::BulkString(Bytes::from_static(b"bench_list")),
         ]);
-        let rpush = Command::parse(&rpush_cmd).unwrap();
-        let lpop = Command::parse(&lpop_cmd).unwrap();
+        let rpush = Command::parse(&rpush_cmd).expect("command should parse");
+        let lpop = Command::parse(&lpop_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -211,7 +211,7 @@ fn bench_list_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"0")),
             RespValue::BulkString(Bytes::from_static(b"10")),
         ]);
-        let cmd = Command::parse(&lrange_cmd).unwrap();
+        let cmd = Command::parse(&lrange_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -225,7 +225,7 @@ fn bench_list_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"bench_list")),
             RespValue::BulkString(Bytes::from_static(b"50")),
         ]);
-        let cmd = Command::parse(&lindex_cmd).unwrap();
+        let cmd = Command::parse(&lindex_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -236,14 +236,14 @@ fn bench_list_operations(c: &mut Criterion) {
 
 fn bench_numeric_operations(c: &mut Criterion) {
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     c.bench_function("numeric_incr", |b| {
         let incr_cmd = RespValue::Array(vec![
             RespValue::BulkString(Bytes::from_static(b"INCR")),
             RespValue::BulkString(Bytes::from_static(b"bench_counter")),
         ]);
-        let cmd = Command::parse(&incr_cmd).unwrap();
+        let cmd = Command::parse(&incr_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -257,7 +257,7 @@ fn bench_numeric_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"bench_counter2")),
             RespValue::BulkString(Bytes::from_static(b"5")),
         ]);
-        let cmd = Command::parse(&incrby_cmd).unwrap();
+        let cmd = Command::parse(&incrby_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -268,7 +268,7 @@ fn bench_numeric_operations(c: &mut Criterion) {
 
 fn bench_set_zset_operations(c: &mut Criterion) {
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     c.bench_function("set_sadd", |b| {
         let sadd_cmd = RespValue::Array(vec![
@@ -276,7 +276,7 @@ fn bench_set_zset_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"bench_set")),
             RespValue::BulkString(Bytes::from_static(b"member")),
         ]);
-        let cmd = Command::parse(&sadd_cmd).unwrap();
+        let cmd = Command::parse(&sadd_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -289,7 +289,7 @@ fn bench_set_zset_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"SMEMBERS")),
             RespValue::BulkString(Bytes::from_static(b"bench_set")),
         ]);
-        let cmd = Command::parse(&smembers_cmd).unwrap();
+        let cmd = Command::parse(&smembers_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -304,7 +304,7 @@ fn bench_set_zset_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"1.5")),
             RespValue::BulkString(Bytes::from_static(b"member")),
         ]);
-        let cmd = Command::parse(&zadd_cmd).unwrap();
+        let cmd = Command::parse(&zadd_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -319,7 +319,7 @@ fn bench_set_zset_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"0")),
             RespValue::BulkString(Bytes::from_static(b"10")),
         ]);
-        let cmd = Command::parse(&zrange_cmd).unwrap();
+        let cmd = Command::parse(&zrange_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -330,7 +330,7 @@ fn bench_set_zset_operations(c: &mut Criterion) {
 
 fn bench_bulk_operations(c: &mut Criterion) {
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     // Setup: create multiple keys
     for i in 0..10 {
@@ -341,7 +341,7 @@ fn bench_bulk_operations(c: &mut Criterion) {
         ]);
         rt.block_on(
             Command::parse(&set_cmd)
-                .unwrap()
+                .expect("command should parse")
                 .execute(&db, &mut BytesMut::new()),
         );
     }
@@ -355,7 +355,7 @@ fn bench_bulk_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"bulk_key_3")),
             RespValue::BulkString(Bytes::from_static(b"bulk_key_4")),
         ]);
-        let cmd = Command::parse(&mget_cmd).unwrap();
+        let cmd = Command::parse(&mget_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -371,7 +371,7 @@ fn bench_bulk_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"mset_key_b")),
             RespValue::BulkString(Bytes::from_static(b"mset_value_b")),
         ]);
-        let cmd = Command::parse(&mset_cmd).unwrap();
+        let cmd = Command::parse(&mset_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -406,7 +406,7 @@ fn stress_test_concurrent_operations(c: &mut Criterion) {
     let db = Database::new_shared(16);
 
     c.bench_function("stress_concurrent_sets", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
         b.iter(|| {
             let mut handles = vec![];
 
@@ -429,13 +429,13 @@ fn stress_test_concurrent_operations(c: &mut Criterion) {
 
             // Wait for all operations to complete
             for handle in handles {
-                rt.block_on(handle).unwrap();
+                rt.block_on(handle).expect("benchmark task should complete");
             }
         })
     });
 
     c.bench_function("stress_large_hash_operations", |b| {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
         // Pre-populate a large hash
         for i in 0..1000 {
@@ -447,7 +447,7 @@ fn stress_test_concurrent_operations(c: &mut Criterion) {
             ]);
             rt.block_on(
                 Command::parse(&hset_cmd)
-                    .unwrap()
+                    .expect("command should parse")
                     .execute(&db, &mut BytesMut::new()),
             );
         }
@@ -456,7 +456,7 @@ fn stress_test_concurrent_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"HGETALL")),
             RespValue::BulkString(Bytes::from_static(b"stress_large_hash")),
         ]);
-        let cmd = Command::parse(&hgetall_cmd).unwrap();
+        let cmd = Command::parse(&hgetall_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -471,7 +471,7 @@ fn stress_test_memory_pressure(c: &mut Criterion) {
 
     c.bench_function("stress_many_keys", |b| {
         let db = Database::new_shared(16);
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
         b.iter(|| {
             // Create 1000 keys in one iteration
@@ -483,7 +483,7 @@ fn stress_test_memory_pressure(c: &mut Criterion) {
                 ]);
                 rt.block_on(
                     Command::parse(&set_cmd)
-                        .unwrap()
+                        .expect("command should parse")
                         .execute(&db, &mut BytesMut::new()),
                 );
             }
@@ -492,7 +492,7 @@ fn stress_test_memory_pressure(c: &mut Criterion) {
 
     c.bench_function("stress_large_values", |b| {
         let db = Database::new_shared(16);
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
         b.iter(|| {
             // Create keys with 1KB values
@@ -504,7 +504,7 @@ fn stress_test_memory_pressure(c: &mut Criterion) {
                 ]);
                 rt.block_on(
                     Command::parse(&set_cmd)
-                        .unwrap()
+                        .expect("command should parse")
                         .execute(&db, &mut BytesMut::new()),
                 );
             }
@@ -514,7 +514,7 @@ fn stress_test_memory_pressure(c: &mut Criterion) {
 
 fn stress_test_error_conditions(c: &mut Criterion) {
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     c.bench_function("stress_invalid_commands", |b| {
         let invalid_cmds = vec![
@@ -551,7 +551,7 @@ fn stress_test_error_conditions(c: &mut Criterion) {
         ]);
         rt.block_on(
             Command::parse(&set_cmd)
-                .unwrap()
+                .expect("command should parse")
                 .execute(&db, &mut BytesMut::new()),
         );
 
@@ -560,7 +560,7 @@ fn stress_test_error_conditions(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"conflict_key")),
             RespValue::BulkString(Bytes::from_static(b"field")),
         ]);
-        let cmd = Command::parse(&hget_cmd).unwrap();
+        let cmd = Command::parse(&hget_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -571,7 +571,7 @@ fn stress_test_error_conditions(c: &mut Criterion) {
 
 fn stress_test_numeric_operations(c: &mut Criterion) {
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
     c.bench_function("stress_numeric_overflow", |b| {
         let incrby_cmd = RespValue::Array(vec![
@@ -579,7 +579,7 @@ fn stress_test_numeric_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"overflow_test")),
             RespValue::BulkString(Bytes::from(i64::MAX.to_string())),
         ]);
-        let cmd = Command::parse(&incrby_cmd).unwrap();
+        let cmd = Command::parse(&incrby_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();
@@ -594,7 +594,7 @@ fn stress_test_numeric_operations(c: &mut Criterion) {
             RespValue::BulkString(Bytes::from_static(b"float_field")),
             RespValue::BulkString(Bytes::from_static(b"0.1")),
         ]);
-        let cmd = Command::parse(&hincrbyfloat_cmd).unwrap();
+        let cmd = Command::parse(&hincrbyfloat_cmd).expect("command should parse");
         let mut out = BytesMut::new();
         b.iter(|| {
             out.clear();

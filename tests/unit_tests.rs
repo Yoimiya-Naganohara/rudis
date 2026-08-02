@@ -209,12 +209,16 @@ fn test_database_hash_operations() {
     );
 
     // Test hget_all
-    let all_fields = db.hget_all(&Bytes::from("user")).unwrap();
+    let all_fields = db
+        .hget_all(&Bytes::from("user"))
+        .expect("db operation should succeed");
     assert_eq!(all_fields.len(), 2); // key and value for "name"
     assert!(all_fields.contains(&Bytes::from("name")));
     assert!(all_fields.contains(&Bytes::from("Bob")));
 
-    let empty_hash = db.hget_all(&Bytes::from("nonexistent")).unwrap();
+    let empty_hash = db
+        .hget_all(&Bytes::from("nonexistent"))
+        .expect("db operation should succeed");
     assert_eq!(empty_hash.len(), 0);
 }
 
@@ -331,7 +335,8 @@ fn test_database_zset_operations() {
 
     // zrange in score order
     assert_eq!(
-        db.zrange(&Bytes::from("z"), 0, -1).unwrap(),
+        db.zrange(&Bytes::from("z"), 0, -1)
+            .expect("db operation should succeed"),
         vec![Bytes::from("a"), Bytes::from("b")]
     );
 
@@ -407,7 +412,9 @@ fn test_database_set_operations() {
     assert_eq!(db.sadd(&Bytes::from("myset"), &[Bytes::from("member1")]), 0);
 
     // Test smembers
-    let members = db.smembers(&Bytes::from("myset")).unwrap();
+    let members = db
+        .smembers(&Bytes::from("myset"))
+        .expect("db operation should succeed");
     assert_eq!(members.len(), 3);
     assert!(members.contains(&Bytes::from("member1")));
     assert!(members.contains(&Bytes::from("member2")));

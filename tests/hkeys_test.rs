@@ -42,13 +42,15 @@ fn test_hkeys_functionality() {
     );
 
     // Test HKEYS returns only the field names
-    let keys_result = db.hkeys(&Bytes::from("user:1")).unwrap();
+    let keys_result = db
+        .hkeys(&Bytes::from("user:1"))
+        .expect("db operation should succeed");
     assert_eq!(keys_result.len(), 3);
 
     // Convert to owned strings for easier comparison
     let mut keys: Vec<String> = keys_result
         .iter()
-        .map(|s| String::from_utf8(s.to_vec()).unwrap())
+        .map(|s| String::from_utf8(s.to_vec()).expect("response should be valid UTF-8"))
         .collect();
     keys.sort(); // Sort for consistent comparison
 
@@ -63,7 +65,9 @@ fn test_hkeys_functionality() {
     assert!(!keys.contains(&"NYC".to_string()));
 
     // Test HKEYS vs HGETALL difference
-    let getall_result = db.hget_all(&Bytes::from("user:1")).unwrap();
+    let getall_result = db
+        .hget_all(&Bytes::from("user:1"))
+        .expect("db operation should succeed");
     assert_eq!(getall_result.len(), 6); // Should have 6 items (3 keys + 3 values)
     assert_eq!(keys_result.len(), 3); // Should have 3 items (only keys)
 }

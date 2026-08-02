@@ -42,13 +42,15 @@ fn test_hvals_functionality() {
     );
 
     // Test HVALS returns only the values
-    let values_result = db.hvals(&Bytes::from("user:1")).unwrap();
+    let values_result = db
+        .hvals(&Bytes::from("user:1"))
+        .expect("db operation should succeed");
     assert_eq!(values_result.len(), 3);
 
     // Convert to owned strings for easier comparison
     let mut values: Vec<String> = values_result
         .iter()
-        .map(|s| String::from_utf8(s.to_vec()).unwrap())
+        .map(|s| String::from_utf8(s.to_vec()).expect("response should be valid UTF-8"))
         .collect();
     values.sort(); // Sort for consistent comparison
 
@@ -63,7 +65,9 @@ fn test_hvals_functionality() {
     assert!(!values.contains(&"city".to_string()));
 
     // Test HVALS vs HGETALL difference
-    let getall_result = db.hget_all(&Bytes::from("user:1")).unwrap();
+    let getall_result = db
+        .hget_all(&Bytes::from("user:1"))
+        .expect("db operation should succeed");
     assert_eq!(getall_result.len(), 6); // Should have 6 items (3 keys + 3 values)
     assert_eq!(values_result.len(), 3); // Should have 3 items (only values)
 }

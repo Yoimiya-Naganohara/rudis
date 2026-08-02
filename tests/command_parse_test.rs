@@ -134,20 +134,23 @@ fn test_zadd_parses() {
 #[test]
 fn test_hset_multiple_pairs_executes() {
     let db = Database::new_shared(16);
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("tokio runtime should initialize");
 
-    let parsed = Command::parse(&cmd("HSET", &["h", "f1", "v1", "f2", "v2"])).unwrap();
+    let parsed =
+        Command::parse(&cmd("HSET", &["h", "f1", "v1", "f2", "v2"])).expect("command should parse");
     // First call: both fields are new
     let mut out = BytesMut::new();
     rt.block_on(parsed.execute(&db, &mut out));
     assert_eq!(out.as_ref(), b":2\r\n");
     // Second call: both fields already exist, nothing added
-    let parsed = Command::parse(&cmd("HSET", &["h", "f1", "v1", "f2", "v2"])).unwrap();
+    let parsed =
+        Command::parse(&cmd("HSET", &["h", "f1", "v1", "f2", "v2"])).expect("command should parse");
     let mut out = BytesMut::new();
     rt.block_on(parsed.execute(&db, &mut out));
     assert_eq!(out.as_ref(), b":0\r\n");
     // Update one field: only the new one counts
-    let parsed = Command::parse(&cmd("HSET", &["h", "f1", "v1b", "f3", "v3"])).unwrap();
+    let parsed = Command::parse(&cmd("HSET", &["h", "f1", "v1b", "f3", "v3"]))
+        .expect("command should parse");
     let mut out = BytesMut::new();
     rt.block_on(parsed.execute(&db, &mut out));
     assert_eq!(out.as_ref(), b":1\r\n");
