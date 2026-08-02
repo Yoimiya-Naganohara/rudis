@@ -5,11 +5,17 @@ use crate::database::traits::HashOp;
 use crate::database::SharedDatabase;
 use bytes::Bytes;
 
-pub fn hset(db: &SharedDatabase, hash: Bytes, field: Bytes, value: Bytes) -> Bytes {
-    match db.hset(&hash, field, value) {
-        Ok(result) => format_integer(result),
-        Err(e) => format_error(e),
+pub fn hset(db: &SharedDatabase, hash: Bytes, pairs: Vec<(Bytes, Bytes)>) -> Bytes {
+    // HSET returns the number of fields that were *added* (not updated),
+    // so sum the per-field results across all pairs.
+    let mut added = 0i64;
+    for (field, value) in pairs {
+        match db.hset(&hash, field, value) {
+            Ok(result) => added += result,
+            Err(e) => return format_error(e),
+        }
     }
+    format_integer(added)
 }
 
 pub fn hget(db: &SharedDatabase, hash: Bytes, field: Bytes) -> Bytes {

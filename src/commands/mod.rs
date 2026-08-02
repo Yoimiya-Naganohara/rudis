@@ -10,6 +10,11 @@ use crate::{
     networking::resp::RespValue,
 };
 use bytes::Bytes;
+use std::{
+    collections::HashMap,
+    hash::{BuildHasherDefault, Hasher},
+    sync::LazyLock,
+};
 
 pub mod connection;
 pub mod errors;
@@ -41,14 +46,14 @@ pub enum Command {
     MSet(Vec<(Bytes, Bytes)>), // MSET key value [key value ...] - Set multiple keys to multiple values
 
     // Hash Commands
-    HSet(Bytes, Bytes, Bytes), // HSET key field value - Set field in hash stored at key to value
-    HGet(Bytes, Bytes),        // HGET key field - Get value of field in hash stored at key
-    HDel(Bytes, Vec<Bytes>),   // HDEL key field [field ...] - Delete one or more hash fields
-    HGetAll(Bytes),            // HGETALL key - Get all fields and values in hash
-    HKeys(Bytes),              // HKEYS key - Get all field names in hash
-    HVals(Bytes),              // HVALS key - Get all values in hash
-    HLen(Bytes),               // HLEN key - Get number of fields in hash
-    HExists(Bytes, Bytes),     // HEXISTS key field - Check if field exists in hash
+    HSet(Bytes, Vec<(Bytes, Bytes)>), // HSET key field value [field value ...] - Set fields in hash stored at key to values
+    HGet(Bytes, Bytes),               // HGET key field - Get value of field in hash stored at key
+    HDel(Bytes, Vec<Bytes>),          // HDEL key field [field ...] - Delete one or more hash fields
+    HGetAll(Bytes),                   // HGETALL key - Get all fields and values in hash
+    HKeys(Bytes),                     // HKEYS key - Get all field names in hash
+    HVals(Bytes),                     // HVALS key - Get all values in hash
+    HLen(Bytes),                      // HLEN key - Get number of fields in hash
+    HExists(Bytes, Bytes),            // HEXISTS key field - Check if field exists in hash
     HIncrBy(Bytes, Bytes, Bytes), // HINCRBY key field increment - Increment integer value of hash field
     HIncrByFloat(Bytes, Bytes, Bytes), // HINCRBYFLOAT key field increment - Increment float value of hash field
 
@@ -174,84 +179,161 @@ macro_rules! parse_command {
     };
 }
 
+// FNV-1a hasher: fast and deterministic, with no per-lookup randomness cost.
+// Good enough for a fixed command table with short keys (collisions are rare
+// and, at worst, degrade to a few memcmps across 60-ish entries).
+struct FnvHasher(u64);
+
+impl Default for FnvHasher {
+    fn default() -> Self {
+        FnvHasher(0xcbf2_9ce4_8422_2325) // FNV-1a offset basis
+    }
+}
+
+impl Hasher for FnvHasher {
+    fn write(&mut self, bytes: &[u8]) {
+        let mut state = self.0;
+        for &b in bytes {
+            state ^= u64::from(b);
+            state = state.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        self.0 = state;
+    }
+
+    fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+// Builds a (name, parse_fn) entry for COMMAND_TABLE, forwarding the arity
+// pattern (single_key, key_value, ...) straight into parse_command!.
+// Builds a (name, parse_fn) entry for COMMAND_TABLE, forwarding the arity
+// pattern (single_key, key_value, ...) straight into parse_command!.
+// The explicit `as fn(...)` cast forces the closure-to-fn-pointer coercion
+// so all entries share one uniform type in the array literal.
+macro_rules! cmd {
+    ($name:literal, $kind:ident, $variant:ident) => {
+        (
+            $name.as_slice(),
+            (|e: &[RespValue]| parse_command!($kind, e, $variant))
+                as fn(&[RespValue]) -> Option<Command>,
+        )
+    };
+}
+
+// Longest command name (ZRANGEBYSCORE) is 13 bytes; 32 leaves headroom.
+const MAX_COMMAND_NAME_LEN: usize = 32;
+
+// Command dispatch table: maps lowercase command names to their parser.
+// Built once; every request folds the name to ASCII lowercase in a stack
+// buffer (no heap allocation) and does a single hash lookup.
+static COMMAND_TABLE: LazyLock<
+    HashMap<&'static [u8], fn(&[RespValue]) -> Option<Command>, BuildHasherDefault<FnvHasher>>,
+> = LazyLock::new(|| {
+    let mut table: HashMap<
+        &'static [u8],
+        fn(&[RespValue]) -> Option<Command>,
+        BuildHasherDefault<FnvHasher>,
+    > = HashMap::with_hasher(BuildHasherDefault::default());
+
+    table.extend([
+        // Connection Commands
+        cmd!(b"ping", option, Ping),
+        cmd!(b"quit", none, Quit),
+        // String Commands
+        cmd!(b"get", single_key, Get),
+        cmd!(b"set", key_value_options, Set),
+        cmd!(b"del", keys, Del),
+        cmd!(b"incr", single_key, Incr),
+        cmd!(b"decr", single_key, Decr),
+        cmd!(b"incrby", key_value, IncrBy),
+        cmd!(b"decrby", key_value, DecrBy),
+        cmd!(b"append", key_value, Append),
+        cmd!(b"strlen", single_key, Strlen),
+        cmd!(b"mget", keys, MGet),
+        cmd!(b"mset", key_value_pairs, MSet),
+        // Hash Commands
+        cmd!(b"hset", key_pair_values, HSet),
+        cmd!(b"hget", key_value, HGet),
+        cmd!(b"hdel", key_fields, HDel),
+        cmd!(b"hgetall", single_key, HGetAll),
+        cmd!(b"hkeys", single_key, HKeys),
+        cmd!(b"hvals", single_key, HVals),
+        cmd!(b"hlen", single_key, HLen),
+        cmd!(b"hexists", key_value, HExists),
+        cmd!(b"hincrby", key_field_value, HIncrBy),
+        cmd!(b"hincrbyfloat", key_field_value, HIncrByFloat),
+        // List Commands
+        cmd!(b"lpush", key_fields, LPush),
+        cmd!(b"rpush", key_fields, RPush),
+        cmd!(b"lpop", single_key, LPop),
+        cmd!(b"rpop", single_key, RPop),
+        cmd!(b"llen", single_key, LLen),
+        cmd!(b"lindex", key_value, LIndex),
+        cmd!(b"lrange", key_field_value, LRange),
+        cmd!(b"ltrim", key_field_value, LTrim),
+        cmd!(b"lset", key_field_value, LSet),
+        cmd!(b"linsert", key_ord_pivot_value, LInsert),
+        // Set Commands
+        cmd!(b"sadd", key_fields, SAdd),
+        cmd!(b"srem", key_fields, SRem),
+        cmd!(b"smembers", single_key, SMembers),
+        cmd!(b"scard", single_key, SCard),
+        cmd!(b"sismember", key_value, SIsMember),
+        cmd!(b"sinter", keys, SInter),
+        cmd!(b"sunion", keys, SUnion),
+        cmd!(b"sdiff", keys, SDiff),
+        // Sorted Set Commands
+        cmd!(b"zadd", key_pair_values, ZAdd),
+        cmd!(b"zrem", key_fields, ZRem),
+        cmd!(b"zrange", key_field_value, ZRange),
+        cmd!(b"zrangebyscore", key_field_value, ZRangeByScore),
+        cmd!(b"zcard", single_key, ZCard),
+        cmd!(b"zscore", key_value, ZScore),
+        cmd!(b"zrank", key_value, ZRank),
+        // Key Commands
+        cmd!(b"exists", keys, Exists),
+        cmd!(b"expire", key_value, Expire),
+        cmd!(b"ttl", single_key, Ttl),
+        cmd!(b"type", single_key, Type),
+        cmd!(b"keys", single_key, Keys),
+        cmd!(b"flushall", none, FlushAll),
+        cmd!(b"flushdb", none, FlushDB),
+        // Connection/Server Commands
+        cmd!(b"echo", single_key, Echo),
+        cmd!(b"auth", single_key, Auth),
+        cmd!(b"select", single_key, Select),
+        cmd!(b"info", option, Info),
+        // Additional String Commands
+        cmd!(b"setnx", key_value, SetNX),
+        cmd!(b"setex", key_field_value, SetEX),
+        cmd!(b"getset", key_value, GetSet),
+    ]);
+    table
+});
+
 impl Command {
     pub fn parse(resp_value: &RespValue) -> Option<Self> {
-        match resp_value {
-            RespValue::Array(elements) if !elements.is_empty() => {
-                let command_name_bytes = command_helper::extract_bulk_string(&elements[0])?;
-                // Convert command name to uppercase string for matching (commands are ASCII usually)
-                let command_name = String::from_utf8_lossy(&command_name_bytes).to_uppercase();
-
-                match command_name.as_str() {
-                    "PING" => parse_command!(option, elements, Ping),
-                    "QUIT" => parse_command!(none, elements, Quit),
-                    "GET" => parse_command!(single_key, elements, Get),
-                    "SET" => {
-                        parse_command!(key_value_options, elements, Set)
-                    }
-                    "DEL" => parse_command!(keys, elements, Del),
-                    "INCR" => parse_command!(single_key, elements, Incr),
-                    "DECR" => parse_command!(single_key, elements, Decr),
-                    "INCRBY" => parse_command!(key_value, elements, IncrBy),
-                    "DECRBY" => parse_command!(key_value, elements, DecrBy),
-                    "APPEND" => parse_command!(key_value, elements, Append),
-                    "STRLEN" => parse_command!(single_key, elements, Strlen),
-                    "MGET" => parse_command!(keys, elements, MGet),
-                    "MSET" => parse_command!(key_value_pairs, elements, MSet),
-                    "HSET" => parse_command!(key_field_value, elements, HSet),
-                    "HGET" => parse_command!(key_value, elements, HGet),
-                    "HDEL" => parse_command!(key_fields, elements, HDel),
-                    "HGETALL" => parse_command!(single_key, elements, HGetAll),
-                    "HKEYS" => parse_command!(single_key, elements, HKeys),
-                    "HVALS" => parse_command!(single_key, elements, HVals),
-                    "HLEN" => parse_command!(single_key, elements, HLen),
-                    "HEXISTS" => parse_command!(key_value, elements, HExists),
-                    "HINCRBY" => parse_command!(key_field_value, elements, HIncrBy),
-                    "HINCRBYFLOAT" => parse_command!(key_field_value, elements, HIncrByFloat),
-                    "LPUSH" => parse_command!(key_fields, elements, LPush),
-                    "RPUSH" => parse_command!(key_fields, elements, RPush),
-                    "LPOP" => parse_command!(single_key, elements, LPop),
-                    "RPOP" => parse_command!(single_key, elements, RPop),
-                    "LLen" => parse_command!(single_key, elements, LLen),
-                    "LINDEX" => parse_command!(key_value, elements, LIndex),
-                    "LRANGE" => parse_command!(key_field_value, elements, LRange),
-                    "LTRIM" => parse_command!(key_field_value, elements, LTrim),
-                    "LSET" => parse_command!(key_field_value, elements, LSet),
-                    "LINSERT" => parse_command!(key_ord_pivot_value, elements, LInsert),
-                    "SADD" => parse_command!(key_fields, elements, SAdd),
-                    "SREM" => parse_command!(key_fields, elements, SRem),
-                    "SMEMBERS" => parse_command!(single_key, elements, SMembers),
-                    "SCard" => parse_command!(single_key, elements, SCard),
-                    "SISMEMBER" => parse_command!(key_value, elements, SIsMember),
-                    "SINTER" => parse_command!(keys, elements, SInter),
-                    "SUNION" => parse_command!(keys, elements, SUnion),
-                    "SDiff" => parse_command!(keys, elements, SDiff),
-                    "ZADD" => parse_command!(key_pair_values, elements, ZAdd),
-                    "ZREM" => parse_command!(key_fields, elements, ZRem),
-                    "ZRANGE" => parse_command!(key_field_value, elements, ZRange),
-                    "ZRANGEBYSCORE" => parse_command!(key_field_value, elements, ZRangeByScore),
-                    "ZCARD" => parse_command!(single_key, elements, ZCard),
-                    "ZSCORE" => parse_command!(key_value, elements, ZScore),
-                    "ZRANK" => parse_command!(key_value, elements, ZRank),
-                    "EXISTS" => parse_command!(keys, elements, Exists),
-                    "EXPIRE" => parse_command!(key_value, elements, Expire),
-                    "TTL" => parse_command!(single_key, elements, Ttl),
-                    "TYPE" => parse_command!(single_key, elements, Type),
-                    "KEYS" => parse_command!(single_key, elements, Keys),
-                    "FLUSHALL" => parse_command!(none, elements, FlushAll),
-                    "FLUSHDB" => parse_command!(none, elements, FlushDB),
-                    "ECHO" => parse_command!(single_key, elements, Echo),
-                    "AUTH" => parse_command!(single_key, elements, Auth),
-                    "SELECT" => parse_command!(single_key, elements, Select),
-                    "INFO" => parse_command!(option, elements, Info),
-                    "SETNX" => parse_command!(key_value, elements, SetNX),
-                    "SETEX" => parse_command!(key_field_value, elements, SetEX),
-                    "GETSET" => parse_command!(key_value, elements, GetSet),
-                    _ => None,
-                }
-            }
-            _ => None,
+        let RespValue::Array(elements) = resp_value else {
+            return None;
+        };
+        if elements.is_empty() {
+            return None;
         }
+        // Command name as a byte slice: no clone, no allocation
+        let name_bytes = command_helper::bulk_string_bytes(&elements[0])?;
+        if name_bytes.is_empty() || name_bytes.len() > MAX_COMMAND_NAME_LEN {
+            return None;
+        }
+        // Fold to ASCII lowercase in a stack buffer, then do one hash lookup.
+        // Commands are case-insensitive ASCII, so this matches any casing
+        // without allocating or running Unicode-aware uppercasing.
+        let mut lower = [0u8; MAX_COMMAND_NAME_LEN];
+        for (i, &b) in name_bytes.iter().enumerate() {
+            lower[i] = b.to_ascii_lowercase();
+        }
+        let parse_fn = COMMAND_TABLE.get(&lower[..name_bytes.len()])?;
+        parse_fn(elements)
     }
 
     pub async fn execute(self, db: &SharedDatabase) -> Bytes {
@@ -269,7 +351,7 @@ impl Command {
             Command::Strlen(key) => strings::strlen(db, key),
             Command::MGet(keys) => strings::mget(db, keys),
             Command::MSet(key_values) => strings::mset(db, key_values),
-            Command::HSet(hash, field, value) => hashes::hset(db, hash, field, value),
+            Command::HSet(hash, pairs) => hashes::hset(db, hash, pairs),
             Command::HGet(hash, field) => hashes::hget(db, hash, field),
             Command::HDel(hash, fields) => hashes::hdel(db, hash, fields),
             Command::HGetAll(key) => hashes::hgetall(db, key),

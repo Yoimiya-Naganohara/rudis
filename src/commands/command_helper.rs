@@ -10,6 +10,15 @@ pub fn extract_bulk_string(resp_value: &RespValue) -> Option<Bytes> {
     }
 }
 
+// Helper function to get BulkString bytes as a slice, without cloning
+pub fn bulk_string_bytes(resp_value: &RespValue) -> Option<&[u8]> {
+    match resp_value {
+        RespValue::BulkString(bytes) => Some(bytes.as_ref()),
+        RespValue::SimpleString(s) => Some(s.as_ref()),
+        _ => None,
+    }
+}
+
 // Helper function to extract multiple BulkString values
 pub fn extract_bulk_strings(elements: &[RespValue]) -> Option<Vec<Bytes>> {
     elements.iter().map(extract_bulk_string).collect()
@@ -91,7 +100,9 @@ pub fn parse_key_pair_values_command(
     elements: &[RespValue],
     min_required_len: usize,
 ) -> Option<(Bytes, Vec<(Bytes, Bytes)>)> {
-    if elements.len() >= min_required_len && elements.len() % 2 == 1 {
+    // key + 2n pair elements after the command name, so the total element
+    // count is always even (name + key + 2n)
+    if elements.len() >= min_required_len && elements.len() % 2 == 0 {
         let key = extract_bulk_string(&elements[1])?;
         let pairs = extract_key_value_strings(&elements[2..])?;
         Some((key, pairs))
