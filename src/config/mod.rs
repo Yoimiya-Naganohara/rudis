@@ -4,6 +4,7 @@
 pub struct Config {
     pub port: u16,
     pub host: String,
+    #[allow(dead_code)] // Reserved for connection limiting; not wired in yet
     pub max_connections: usize,
     pub db_num: usize,
 }
@@ -19,6 +20,8 @@ impl Default for Config {
     }
 }
 
+// Config loading is not wired in yet; keep the scaffolding for future use.
+#[allow(dead_code)]
 impl Config {
     pub fn new() -> Self {
         Default::default()

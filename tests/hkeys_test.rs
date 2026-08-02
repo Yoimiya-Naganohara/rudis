@@ -9,7 +9,7 @@ use rudis::database::{
 
 #[test]
 fn test_hkeys_functionality() {
-    let mut db = Database::new(16);
+    let db = Database::new(16);
 
     // Test HKEYS on non-existent hash
     let result = db.hkeys(&Bytes::from("nonexistent"));
@@ -70,7 +70,7 @@ fn test_hkeys_functionality() {
 
 #[test]
 fn test_hkeys_type_error() {
-    let mut db = Database::new(16);
+    let db = Database::new(16);
 
     // Set a string value
     db.set(&Bytes::from("mystring"), Bytes::from("value"));

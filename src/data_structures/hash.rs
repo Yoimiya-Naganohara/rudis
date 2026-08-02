@@ -14,6 +14,9 @@ impl Default for RedisHash {
     }
 }
 
+// No caller needs an emptiness check (len covers all call sites), so the
+// lint's suggested is_empty API is not added.
+#[allow(clippy::len_without_is_empty)]
 impl RedisHash {
     pub fn new() -> Self {
         RedisHash {

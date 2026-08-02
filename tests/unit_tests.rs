@@ -12,7 +12,7 @@ use rudis::database::{
 #[test]
 fn test_redis_string_operations() {
     // Test basic operations
-    let rs = RedisString::new(Bytes::from("hello"));
+    let _rs = RedisString::new(Bytes::from("hello"));
     // assert_eq!(rs.get(), "hello");
 
     // Test mutable operations
@@ -26,22 +26,22 @@ fn test_redis_list_operations() {
     let mut list = RedisList::new();
     assert_eq!(list.len(), 0);
 
-    // Test push and pop
-    list.push(Bytes::from("item1"));
+    // Test rpush and rpop
+    list.rpush(Bytes::from("item1"));
     assert_eq!(list.len(), 1);
 
-    list.push(Bytes::from("item2"));
+    list.rpush(Bytes::from("item2"));
     assert_eq!(list.len(), 2);
 
-    // Test pop (LIFO)
-    assert_eq!(list.pop(), Some(Bytes::from("item2")));
+    // Test rpop (LIFO)
+    assert_eq!(list.rpop(), Some(Bytes::from("item2")));
     assert_eq!(list.len(), 1);
 
-    assert_eq!(list.pop(), Some(Bytes::from("item1")));
+    assert_eq!(list.rpop(), Some(Bytes::from("item1")));
     assert_eq!(list.len(), 0);
 
-    // Test pop on empty list
-    assert_eq!(list.pop(), None);
+    // Test rpop on empty list
+    assert_eq!(list.rpop(), None);
 }
 
 #[test]
@@ -106,7 +106,7 @@ fn test_redis_set_operations() {
 
 #[test]
 fn test_database_operations() {
-    let mut db = Database::new(16);
+    let db = Database::new(16);
 
     // Test string operations
     db.set(&Bytes::from("key1"), Bytes::from("value1"));
@@ -114,9 +114,9 @@ fn test_database_operations() {
     assert_eq!(db.get(&Bytes::from("nonexistent")), None);
 
     // Test del
-    assert_eq!(db.del(&vec![Bytes::from("key1")]), 1);
+    assert_eq!(db.del(&[Bytes::from("key1")]), 1);
     assert_eq!(db.get(&Bytes::from("key1")), None);
-    assert_eq!(db.del(&vec![Bytes::from("nonexistent")]), 0);
+    assert_eq!(db.del(&[Bytes::from("nonexistent")]), 0);
 
     // Test numeric operations
     assert_eq!(db.incr(&Bytes::from("counter")), Ok(1));
@@ -153,7 +153,7 @@ fn test_database_operations() {
 
 #[test]
 fn test_database_hash_operations() {
-    let mut db = Database::new(16);
+    let db = Database::new(16);
 
     // Test hset on new hash
     assert_eq!(
@@ -197,10 +197,16 @@ fn test_database_hash_operations() {
         Ok(None)
     );
 
-    // Test hdel
-    assert!(db.hdel(&Bytes::from("user"), &Bytes::from("age")));
+    // Test hdel_multiple
+    assert_eq!(
+        db.hdel_multiple(&Bytes::from("user"), &[Bytes::from("age")]),
+        1
+    );
     assert_eq!(db.hget(&Bytes::from("user"), &Bytes::from("age")), Ok(None));
-    assert!(!db.hdel(&Bytes::from("user"), &Bytes::from("nonexistent")));
+    assert_eq!(
+        db.hdel_multiple(&Bytes::from("user"), &[Bytes::from("nonexistent")]),
+        0
+    );
 
     // Test hget_all
     let all_fields = db.hget_all(&Bytes::from("user")).unwrap();
@@ -214,7 +220,7 @@ fn test_database_hash_operations() {
 
 #[test]
 fn test_database_type_conflicts() {
-    let mut db = Database::new(16);
+    let db = Database::new(16);
 
     // Set a string value
     db.set(&Bytes::from("mykey"), Bytes::from("string_value"));
@@ -307,7 +313,7 @@ fn test_redis_zset_operations() {
 
 #[test]
 fn test_database_zset_operations() {
-    let mut db = Database::new(16);
+    let db = Database::new(16);
 
     // zadd new members
     assert_eq!(
@@ -343,7 +349,7 @@ fn test_database_zset_operations() {
 
 #[test]
 fn test_database_edge_cases() {
-    let mut db = Database::new(16);
+    let db = Database::new(16);
 
     // Test operations on empty keys
     db.set(&Bytes::from(""), Bytes::from("empty_key"));
@@ -385,7 +391,7 @@ fn test_database_edge_cases() {
 
 #[test]
 fn test_database_set_operations() {
-    let mut db = Database::new(16);
+    let db = Database::new(16);
 
     // Test sadd on new set
     assert_eq!(db.sadd(&Bytes::from("myset"), &[Bytes::from("member1")]), 1);

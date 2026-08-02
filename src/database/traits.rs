@@ -19,7 +19,6 @@ pub trait StringOp {
 pub trait HashOp {
     fn hset(&self, hash: &Bytes, field: Bytes, value: Bytes) -> Result<i64>;
     fn hget(&self, hash: &Bytes, field: &Bytes) -> Result<Option<Bytes>>;
-    fn hdel(&self, hash: &Bytes, field: &Bytes) -> bool;
     fn hdel_multiple(&self, hash: &Bytes, fields: &[Bytes]) -> usize;
     fn hget_all(&self, hash: &Bytes) -> Result<Vec<Bytes>>;
     fn hkeys(&self, hash: &Bytes) -> Result<Vec<Bytes>>;

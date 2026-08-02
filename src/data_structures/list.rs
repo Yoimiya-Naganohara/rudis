@@ -14,6 +14,9 @@ impl Default for RedisList {
     }
 }
 
+// No caller needs an emptiness check (len covers all call sites), so the
+// lint's suggested is_empty API is not added.
+#[allow(clippy::len_without_is_empty)]
 impl RedisList {
     pub fn new() -> Self {
         RedisList {
@@ -27,17 +30,11 @@ impl RedisList {
     pub fn lpush(&mut self, item: Bytes) {
         self.items.push_front(item);
     }
-    pub fn push(&mut self, item: Bytes) {
-        self.rpush(item);
-    }
     pub fn lpop(&mut self) -> Option<Bytes> {
         self.items.pop_front()
     }
     pub fn rpop(&mut self) -> Option<Bytes> {
         self.items.pop_back()
-    }
-    pub fn pop(&mut self) -> Option<Bytes> {
-        self.rpop()
     }
     pub fn index(&self, index: i64) -> Option<&Bytes> {
         let len = self.items.len() as i64;

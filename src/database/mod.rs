@@ -76,11 +76,8 @@ impl Database {
         let data = self.current_data();
         if let Some(mut entry) = data.get_mut(key) {
             if let RedisValue::String(current_value) = entry.value_mut() {
-                // Parse existing Bytes to i64
-                let val_bytes = current_value.get();
-                let s =
-                    std::str::from_utf8(&val_bytes).map_err(|_| CommandError::InvalidInteger)?;
-                match s.parse::<i64>() {
+                // Parse the existing value as an integer
+                match current_value.parse::<i64>() {
                     Ok(integer) => {
                         let new_integer = integer + val;
                         *current_value = RedisString::new(Bytes::from(new_integer.to_string()));

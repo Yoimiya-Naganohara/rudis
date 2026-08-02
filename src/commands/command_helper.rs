@@ -203,14 +203,6 @@ pub fn format_integer(out: &mut BytesMut, value: i64) {
     let _ = write!(out, ":{}\r\n", value);
 }
 
-pub fn format_array(out: &mut BytesMut, elements: Vec<String>) {
-    let _ = write!(out, "*{}\r\n", elements.len());
-    for element in elements {
-        out.put_slice(element.as_bytes());
-    }
-}
-
-// New signature for format_array taking Bytes
 pub fn format_array_bytes(out: &mut BytesMut, elements: Vec<Bytes>) {
     let _ = write!(out, "*{}\r\n", elements.len());
     for element in elements {

@@ -40,18 +40,6 @@ impl HashOp for Database {
         }
     }
 
-    fn hdel(&self, hash: &Bytes, field: &Bytes) -> bool {
-        if let Some(mut entry) = self.current_data().get_mut(hash) {
-            if let RedisValue::Hash(existing_hash) = entry.value_mut() {
-                existing_hash.hdel(field)
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
-
     fn hdel_multiple(&self, hash: &Bytes, fields: &[Bytes]) -> usize {
         if let Some(mut entry) = self.current_data().get_mut(hash) {
             if let RedisValue::Hash(existing_hash) = entry.value_mut() {

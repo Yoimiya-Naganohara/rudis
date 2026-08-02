@@ -208,8 +208,7 @@ macro_rules! cmd {
     ($name:literal, $kind:ident, $variant:ident) => {
         (
             $name.as_slice(),
-            (|e: &[RespValue]| parse_command!($kind, e, $variant))
-                as fn(&[RespValue]) -> Option<Command>,
+            (|e: &[RespValue]| parse_command!($kind, e, $variant)) as CommandParser,
         )
     };
 }
@@ -220,14 +219,11 @@ const MAX_COMMAND_NAME_LEN: usize = 32;
 // Command dispatch table: maps lowercase command names to their parser.
 // Built once; every request folds the name to ASCII lowercase in a stack
 // buffer (no heap allocation) and does a single hash lookup.
-static COMMAND_TABLE: LazyLock<
-    HashMap<&'static [u8], fn(&[RespValue]) -> Option<Command>, BuildHasherDefault<FnvHasher>>,
-> = LazyLock::new(|| {
-    let mut table: HashMap<
-        &'static [u8],
-        fn(&[RespValue]) -> Option<Command>,
-        BuildHasherDefault<FnvHasher>,
-    > = HashMap::with_hasher(BuildHasherDefault::default());
+type CommandParser = fn(&[RespValue]) -> Option<Command>;
+type CommandTable = HashMap<&'static [u8], CommandParser, BuildHasherDefault<FnvHasher>>;
+
+static COMMAND_TABLE: LazyLock<CommandTable> = LazyLock::new(|| {
+    let mut table: CommandTable = HashMap::with_hasher(BuildHasherDefault::default());
 
     table.extend([
         // Connection Commands
