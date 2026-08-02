@@ -27,7 +27,9 @@ pub fn select(db: &SharedDatabase, db_index: Bytes, out: &mut BytesMut) {
     };
 
     match db_idx_str.parse::<u8>() {
-        Ok(db_num) if db_num <= 15 => {
+        // Validate against the actual DB count so the command layer agrees
+        // with Database::select (which refuses out-of-range indices).
+        Ok(db_num) if (db_num as usize) < db.data.len() => {
             db.select(db_num);
             format_simple_string(out, "OK")
         }

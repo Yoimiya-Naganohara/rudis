@@ -31,9 +31,23 @@ async fn read_line(stream: &mut TcpStream, buf: &mut Vec<u8>) -> std::io::Result
             match kind {
                 b'+' | b'-' | b':' => return Ok(rest),
                 b'$' => {
-                    let len: isize = std::str::from_utf8(&rest).unwrap().parse().unwrap();
+                    let len: isize = std::str::from_utf8(&rest)
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?
+                        .parse()
+                        .map_err(|_| {
+                            std::io::Error::new(
+                                std::io::ErrorKind::InvalidData,
+                                "invalid bulk length",
+                            )
+                        })?;
                     if len == -1 {
                         return Ok(Vec::new());
+                    }
+                    if len < -1 {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            "invalid bulk length",
+                        ));
                     }
                     // Need len + 2 more bytes
                     while buf.len() < len as usize + 2 {
@@ -46,9 +60,17 @@ async fn read_line(stream: &mut TcpStream, buf: &mut Vec<u8>) -> std::io::Result
                     return Ok(payload);
                 }
                 b'*' => {
-                    panic!("array replies not supported by bench client");
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Unsupported,
+                        "array replies not supported by bench client",
+                    ));
                 }
-                _ => panic!("unexpected RESP byte {:?}", kind as char),
+                _ => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("unexpected RESP byte {:?}", kind as char),
+                    ));
+                }
             }
         }
         let mut tmp = [0u8; 8192];
@@ -70,8 +92,8 @@ async fn worker(
     per_conn: u64,
     cmd: String,
     latencies: std::sync::Arc<std::sync::Mutex<Vec<f64>>>,
-) {
-    let mut stream = TcpStream::connect(&addr).await.unwrap();
+) -> std::io::Result<()> {
+    let mut stream = TcpStream::connect(&addr).await?;
 
     let (setup, batch) = match cmd.as_str() {
         "get" => {
@@ -92,13 +114,14 @@ async fn worker(
             let batch = resp_cmd("HSET", &[&key, "field", "value"]);
             (setup, batch)
         }
-        _ => panic!("unknown command"),
+        // main() validates the command before spawning workers
+        _ => unreachable!("command validated in main"),
     };
 
     // Setup: ensure the key exists, and verify the reply
-    stream.write_all(&setup).await.unwrap();
+    stream.write_all(&setup).await?;
     let mut rbuf = Vec::new();
-    let setup_reply = read_line(&mut stream, &mut rbuf).await.unwrap();
+    let setup_reply = read_line(&mut stream, &mut rbuf).await?;
     // HSET replies with the number of newly added fields (0 when re-running
     // against a server where the field already exists), SET replies +OK
     match cmd.as_str() {
@@ -138,10 +161,9 @@ async fn worker(
         let t0 = Instant::now();
         stream
             .write_all(&batch_bytes[..batch.len() * count])
-            .await
-            .unwrap();
+            .await?;
         for _ in 0..count {
-            let reply = read_line(&mut stream, &mut rbuf).await.unwrap();
+            let reply = read_line(&mut stream, &mut rbuf).await?;
             if cmd == "hset" {
                 assert!(
                     reply == b"0" || reply == b"1",
@@ -156,21 +178,30 @@ async fn worker(
         samples.push(t1.duration_since(t0).as_secs_f64() * 1e6 / count as f64); // us per request
     }
 
-    latencies.lock().unwrap().extend(samples);
+    latencies
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .extend(samples);
+    Ok(())
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 6 {
+    if args.len() != 6 || !matches!(args[5].as_str(), "get" | "set" | "hset") {
         eprintln!("usage: bench_client <addr> <conns> <pipeline> <total> <get|set|hset>");
         std::process::exit(1);
     }
     let addr = args[1].clone();
-    let conns: usize = args[2].parse().unwrap();
-    let pipeline: usize = args[3].parse().unwrap();
-    let total: u64 = args[4].parse().unwrap();
+    let conns: usize = args[2].parse().map_err(|_| "invalid <conns>")?;
+    let pipeline: usize = args[3].parse().map_err(|_| "invalid <pipeline>")?;
+    let total: u64 = args[4].parse().map_err(|_| "invalid <total>")?;
     let cmd = args[5].clone();
+
+    if conns == 0 || pipeline == 0 {
+        eprintln!("error: <conns> and <pipeline> must be > 0");
+        std::process::exit(1);
+    }
 
     let per_conn = total / conns as u64;
     let latencies = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -181,17 +212,21 @@ async fn main() {
         let addr = addr.clone();
         let cmd = cmd.clone();
         let lat = latencies.clone();
-        handles.push(tokio::spawn(async move {
-            worker(addr, conn, pipeline, per_conn, cmd, lat).await;
-        }));
+        handles.push(tokio::spawn(worker(
+            addr, conn, pipeline, per_conn, cmd, lat,
+        )));
     }
     for h in handles {
-        h.await.unwrap();
+        h.await??;
     }
     let elapsed = t0.elapsed().as_secs_f64();
 
-    let mut samples = latencies.lock().unwrap().clone();
-    samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let mut samples = latencies.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if samples.is_empty() {
+        eprintln!("error: no requests completed (is the server up?)");
+        std::process::exit(1);
+    }
+    samples.sort_by(|a, b| a.total_cmp(b));
     let p = |q: f64| -> f64 {
         let idx = ((samples.len() as f64) * q).floor() as usize;
         samples[idx.min(samples.len() - 1)]
@@ -208,4 +243,5 @@ async fn main() {
         p(0.95),
         p(0.99),
     );
+    Ok(())
 }
